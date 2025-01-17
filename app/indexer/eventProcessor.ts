@@ -393,6 +393,7 @@ async function processTokenBurn(event: any, tx: TransactionClient) {
     data: {
       tokenId: event.data.token_id,
       amount: BigInt(event.data.amount),
+      fromAddress: event.guid.account_address,
     }
   })
 
@@ -472,6 +473,7 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
     data: {
       tokenId: event.data.id,
       amount: BigInt(event.data.amount),
+      toAddress: event.guid.account_address,
     }
   })
 
@@ -523,6 +525,7 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
     data: {
       tokenId: event.data.id,
       amount: BigInt(event.data.amount),
+      fromAddress: event.guid.account_address,
     }
   })
 

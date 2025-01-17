@@ -217,6 +217,7 @@ model TokenDeposit {
   id            Int      @id @default(autoincrement())
   tokenId       Json     // Stores the full TokenId structures
   amount        BigInt
+  toAddress   String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -227,6 +228,7 @@ model TokenWithdraw {
   id            Int      @id @default(autoincrement())
   tokenId       Json     // Stores the full TokenId structure
   amount        BigInt
+  fromAddress   String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -237,6 +239,7 @@ model TokenBurn {
   id            Int      @id @default(autoincrement())
   tokenId       Json     // Stores the full TokenId structure
   amount        BigInt
+  fromAddress   String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
