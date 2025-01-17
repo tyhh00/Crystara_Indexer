@@ -1,0 +1,302 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model BlockProgress {
+  id             Int      @id @default(1)
+  lastBlockHeight BigInt
+  updatedAt      DateTime @updatedAt
+}
+
+model EventTracking {
+  id              Int      @id @default(autoincrement())
+  eventType       String
+  blockHeight     BigInt
+  transactionHash String
+  processed       Boolean  @default(false)
+  error          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([eventType])
+  @@index([blockHeight])
+  @@index([processed])
+}
+
+model Collection {
+  id             Int       @id @default(autoincrement())
+  creatorAddress String
+  collectionName String
+  metadataUri    String
+  tokens         Token[]
+  lootboxes      Lootbox[]
+  rarities       Rarity[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([creatorAddress, collectionName])
+  @@index([creatorAddress])
+  @@index([collectionName])
+}
+
+model Rarity {
+  id           Int        @id @default(autoincrement())
+  collection   Collection @relation(fields: [collectionId], references: [id])
+  collectionId Int
+  rarityName   String
+  weight       BigInt
+  tokens       Token[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([collectionId])
+  @@index([rarityName])
+}
+
+model Token {
+  id           Int        @id @default(autoincrement())
+  collection   Collection @relation(fields: [collectionId], references: [id])
+  collectionId Int
+  rarity       Rarity     @relation(fields: [rarityId], references: [id])
+  rarityId     Int
+  tokenName    String
+  tokenUri     String
+  maxSupply    BigInt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([collectionId])
+  @@index([rarityId])
+  @@index([tokenName])
+}
+
+model Lootbox {
+  id              Int               @id @default(autoincrement())
+  collection      Collection        @relation(fields: [collectionId], references: [id])
+  collectionId    Int
+  price           BigInt
+  priceCoinType   String
+  isActive        Boolean          @default(false)
+  purchases       LootboxPurchase[]
+  watchlistedBy   Account[]         @relation("LootboxWatchlist")
+  followers       Account[]         @relation("LootboxFollowers")
+  totalVolume     BigInt           @default(0)
+  purchaseCount   Int              @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  timestamp       BigInt
+
+  @@index([collectionId])
+  @@index([priceCoinType])
+  @@index([isActive])
+  @@index([totalVolume])
+  @@index([purchaseCount])
+}
+
+model LootboxPurchase {
+  id            Int              @id @default(autoincrement())
+  lootbox       Lootbox         @relation(fields: [lootboxId], references: [id])
+  lootboxId     Int
+  buyer         Account         @relation(fields: [buyerAddress], references: [address])
+  buyerAddress  String
+  quantity      BigInt
+  nonce         String
+  price         BigInt          // Added price field
+  priceCoinType String         // Added price_coinType field
+  rewards       LootboxReward[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([lootboxId])
+  @@index([buyerAddress])
+  @@index([nonce])
+  @@index([createdAt]) // For time-based queries
+  @@index([price])     // For analytics
+}
+
+model LootboxReward {
+  id             Int             @id @default(autoincrement())
+  purchase       LootboxPurchase @relation(fields: [purchaseId], references: [id])
+  purchaseId     Int
+  selectedToken  String
+  selectedRarity String
+  randomNumber   String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([purchaseId])
+  @@index([selectedToken])
+  @@index([selectedRarity])
+}
+
+model VRFCallback {
+  id            Int      @id @default(autoincrement())
+  callerAddress String
+  nonce         String  
+  randomNumbers String[]  
+  timestamp     BigInt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([callerAddress])
+  @@index([nonce])
+  @@index([timestamp])
+}
+
+model TokenClaim {
+  id                  Int      @id @default(autoincrement())
+  claimer            String
+  claimResourceAddress String
+  tokensClaimed      Json     // This will store the array of token objects
+  totalTokens        BigInt
+  timestamp         BigInt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([claimer])
+  @@index([claimResourceAddress])
+  @@index([timestamp])
+}
+
+model TokenMint {
+  id                Int      @id @default(autoincrement())
+  tokenDataId       Json     // Stores the full TokenDataId structure
+  amount           BigInt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TokenData {
+  id                        Int      @id @default(autoincrement())
+  creator                   String
+  collection               String
+  name                     String
+  description              String
+  maximum                  BigInt
+  uri                      String
+  royaltyPayeeAddress      String
+  royaltyPointsDenominator BigInt
+  royaltyPointsNumerator   BigInt
+  propertyKeys             String[]
+  propertyValues           Json      // Store as JSON since it's vector<vector<u8>>
+  propertyTypes            String[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([creator, collection, name])
+  @@index([creator])
+  @@index([collection])
+  @@index([name])
+}
+
+model TokenCollection {
+  id            Int      @id @default(autoincrement())
+  creator       String
+  name          String
+  description   String
+  uri           String
+  maximum       BigInt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([creator, name])
+  @@index([creator])
+  @@index([name])
+}
+
+model TokenDeposit {
+  id            Int      @id @default(autoincrement())
+  tokenId       Json     // Stores the full TokenId structures
+  amount        BigInt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+}
+
+model TokenWithdraw {
+  id            Int      @id @default(autoincrement())
+  tokenId       Json     // Stores the full TokenId structure
+  amount        BigInt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+}
+
+model TokenBurn {
+  id            Int      @id @default(autoincrement())
+  tokenId       Json     // Stores the full TokenId structure
+  amount        BigInt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+
+}
+
+model Account {
+  address           String           @id  // Blockchain address as primary key
+  watchedLootboxes  Lootbox[]        @relation("LootboxWatchlist")
+  followedLootboxes Lootbox[]        @relation("LootboxFollowers")
+  purchases         LootboxPurchase[]
+  tokenBalances     TokenBalance[]
+  tokenTransactions TokenTransaction[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([address])
+}
+
+model TokenBalance {
+  id            Int      @id @default(autoincrement())
+  account       Account  @relation(fields: [accountAddress], references: [address])
+  accountAddress String
+  tokenDataId   Json     // References the TokenDataId structure
+  balance       BigInt
+  lastUpdated   DateTime @updatedAt
+
+  @@unique([accountAddress, tokenDataId])
+  @@index([accountAddress])
+  @@index([lastUpdated])
+}
+
+model TokenTransaction {
+  id              Int      @id @default(autoincrement())
+  account         Account  @relation(fields: [accountAddress], references: [address])
+  accountAddress  String
+  tokenDataId     Json     // References the TokenDataId structure
+  transactionType String   // "DEPOSIT", "WITHDRAW", "BURN", "MINT"
+  amount          BigInt
+  fromAddress     String?  // For tracking transfers
+  toAddress       String?  // For tracking transfers
+  createdAt       DateTime @default(now())
+
+  @@index([accountAddress])
+  @@index([tokenDataId])
+  @@index([transactionType])
+  @@index([createdAt])
+  @@index([fromAddress])
+  @@index([toAddress])
+}
+
+model CollectionAnalytics {
+  id              Int      @id @default(autoincrement())
+  collectionId    Int      @unique
+  volume24h       BigInt   @default(0)
+  purchases24h    Int      @default(0)
+  uniqueBuyers24h Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@index([volume24h])
+  @@index([purchases24h])
+  @@index([uniqueBuyers24h])
+}
