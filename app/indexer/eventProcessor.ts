@@ -404,7 +404,7 @@ async function processTokenBurn(event: any, tx: TransactionClient) {
       tokenDataId: tokenId.token_data_id,
       transactionType: 'BURN',
       amount,
-      fromAddress: accountAddress,
+      fromAddress: event.guid.account_address,
     }
   })
 
@@ -504,7 +504,7 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
       tokenDataId: tokenId.token_data_id,
       transactionType: 'DEPOSIT',
       amount,
-      toAddress: accountAddress, // Record destination
+      toAddress: event.guid.account_address,
     }
   })
 
@@ -551,7 +551,7 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
       tokenDataId: tokenId.token_data_id,
       transactionType: 'WITHDRAW',
       amount,
-      fromAddress: accountAddress, // Record source
+      fromAddress: event.guid.account_address,
     }
   })
 
