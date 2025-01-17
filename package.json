@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx server.ts",
     "lint": "next lint",
     "dev:indexer": "tsx watch scripts/run-indexer.ts",
     "indexer": "tsx scripts/run-indexer.ts"
