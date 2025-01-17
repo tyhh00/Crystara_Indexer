@@ -38,13 +38,18 @@ export class EventPoller {
     if (blockProgress) {
       this.currentBlockHeight = Number(blockProgress.lastBlockHeight) + 1
     } else {
-      // If no progress record exists, create one
+      // If no progress record exists, create one with starting block height
+      const startBlock = process.env.START_BLOCK_HEIGHT ? 
+        parseInt(process.env.START_BLOCK_HEIGHT) : 8270551 // Default starting block
+
       await prismadb.blockProgress.create({
         data: {
           id: 1,
-          lastBlockHeight: BigInt(this.currentBlockHeight)
+          lastBlockHeight: BigInt(startBlock)
         }
       })
+      
+      this.currentBlockHeight = startBlock
     }
 
     this.latestBlockHeight = await fetchLatestBlockHeight()
