@@ -3,9 +3,9 @@ module.exports = {
     {
       name: 'indexer',
       script: 'npm',
-      args: 'run indexer',
+      args: 'run dev:indexer',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'development'
       },
       max_memory_restart: '1G',
       error_file: 'logs/err.log',
@@ -13,7 +13,7 @@ module.exports = {
       time: true,
       instances: 1,
       autorestart: true,
-      watch: false,
+      watch: true,
       max_restarts: 10,
       restart_delay: 5000,
       env_file: '.env'
