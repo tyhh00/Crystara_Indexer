@@ -1,13 +1,8 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  output: 'standalone',
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   experimental: {
-    serverActions: {
-      allowedOrigins: ['*'],
-      bodySizeLimit: '2mb'
-    }
+    serverActions: true
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig
