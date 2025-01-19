@@ -70,13 +70,19 @@ model Token {
   rarityId     Int
   tokenName    String
   tokenUri     String
+  balances      TokenBalance[]
+  propertyVersion BigInt
   maxSupply    BigInt
+  circulatingSupply BigInt
+  tokensBurned BigInt
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  @@unique([collectionId, tokenName, propertyVersion])
   @@index([collectionId])
   @@index([rarityId])
   @@index([tokenName])
+  @@index([propertyVersion])
 }
 
 model Lootbox {
@@ -85,6 +91,8 @@ model Lootbox {
   collectionId    Int
   price           BigInt
   priceCoinType   String
+  maxStock        BigInt
+  availableStock  BigInt
   isActive        Boolean          @default(false)
   purchases       LootboxPurchase[]
   watchlistedBy   Account[]         @relation("LootboxWatchlist")
@@ -130,6 +138,10 @@ model LootboxReward {
   selectedToken  String
   selectedRarity String
   randomNumber   String
+  nonce          String
+  buyerAddress   String
+  collectionName String
+  timestamp      BigInt
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -264,12 +276,15 @@ model TokenBalance {
   account       Account  @relation(fields: [accountAddress], references: [address])
   accountAddress String
   tokenDataId   Json     // References the TokenDataId structure
+  token         Token?   @relation(fields: [tokenId], references: [id])
+  tokenId       Int?     
   balance       BigInt
   lastUpdated   DateTime @updatedAt
 
   @@unique([accountAddress, tokenDataId])
   @@index([accountAddress])
   @@index([lastUpdated])
+  @@index([tokenId]) 
 }
 
 model TokenTransaction {

@@ -169,6 +169,8 @@ async function processLootboxCreated(event: any, tx: TransactionClient) {
       collectionId: collection.id,
       price: BigInt(event.data.price),
       priceCoinType: event.data.price_coinType,
+      maxStock: BigInt(event.data.max_stock),
+      availableStock: BigInt(event.data.initial_stock),
       timestamp: BigInt(event.data.timestamp)
     }
   })
@@ -213,6 +215,9 @@ async function processLootboxPurchaseInitiated(event: any, tx: TransactionClient
       },
       purchaseCount: {
         increment: 1
+      },
+      availableStock: {
+        decrement: BigInt(event.data.quantity)
       }
     }
   })
@@ -257,6 +262,10 @@ async function processLootboxRewardDistributed(event: any, tx: TransactionClient
       selectedToken: event.data.selected_token,
       selectedRarity: event.data.selected_rarity,
       randomNumber: event.data.random_number.toString(),
+      nonce: String(event.data.nonce),
+      buyerAddress: event.data.buyer,
+      collectionName: event.data.collection_name,
+      timestamp: BigInt(event.data.timestamp)
     }
   })
   logger.info(`Processed LootboxRewardDistributedEvent: ${reward.id}`)
@@ -316,6 +325,8 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
       tokenUri: event.data.token_uri,
       rarityId: rarity.id,
       maxSupply: BigInt(event.data.max_supply),
+      circulatingSupply: BigInt(0),
+      tokensBurned: BigInt(0),
     }
   })
   logger.info(`Processed TokenAddedEvent: ${token.id}`)
@@ -388,12 +399,29 @@ async function processTokenBurn(event: any, tx: TransactionClient) {
   const tokenId = event.data.id
   const accountAddress = tokenId.token_data_id.creator
   const amount = BigInt(event.data.amount)
+  const propertyVersion = BigInt(tokenId.property_version)
 
   await tx.tokenBurn.create({
     data: {
       tokenId: event.data.token_id,
       amount: BigInt(event.data.amount),
       fromAddress: event.guid.account_address,
+    }
+  })
+
+  await tx.token.updateMany({
+    where: {
+      tokenName: tokenId.token_data_id.name,
+      collection: {
+        creatorAddress: tokenId.token_data_id.creator,
+        collectionName: tokenId.token_data_id.collection
+      },
+      propertyVersion: propertyVersion
+    },
+    data: {
+      tokensBurned: {
+        increment: amount
+      }
     }
   })
 
@@ -414,12 +442,32 @@ async function processTokenBurn(event: any, tx: TransactionClient) {
 
 async function processTokenMint(event: any, tx: TransactionClient) {
   logger.debug('Processing token mint', event)
+
+  const tokenId = event.data.id
+  const amount = BigInt(event.data.amount)
+
   await tx.tokenMint.create({
     data: {
       tokenDataId: event.data.id,
       amount: BigInt(event.data.amount),
     }
   })
+
+  await tx.token.updateMany({
+    where: {
+      tokenName: tokenId.token_data_id.name,
+      collection: {
+        creatorAddress: tokenId.token_data_id.creator,
+        collectionName: tokenId.token_data_id.collection
+      }
+    },
+    data: {
+      circulatingSupply: {
+        increment: amount
+      }
+    }
+  })
+
   logger.info(`Processed TokenMintEvent`)
 }
 
@@ -464,9 +512,22 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
   const tokenId = event.data.id
   const accountAddress = tokenId.token_data_id.creator
   const amount = BigInt(event.data.amount)
+  const propertyVersion = BigInt(tokenId.property_version)
 
   // Ensure account exists
   await getOrCreateAccount(accountAddress, tx)
+
+  // Find associated token
+  const token = await tx.token.findFirst({
+    where: {
+      tokenName: tokenId.token_data_id.name,
+      collection: {
+        creatorAddress: tokenId.token_data_id.creator,
+        collectionName: tokenId.token_data_id.collection
+      },
+      propertyVersion: propertyVersion
+    }
+  })
 
   // Create deposit record
   await tx.tokenDeposit.create({
@@ -488,9 +549,11 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
     create: {
       accountAddress,
       tokenDataId: tokenId.token_data_id,
+      tokenId: token?.id, 
       balance: amount
     },
     update: {
+      tokenId: token?.id, 
       balance: {
         increment: amount
       }
@@ -517,9 +580,20 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
   const tokenId = event.data.id
   const accountAddress = tokenId.token_data_id.creator
   const amount = BigInt(event.data.amount)
+  const propertyVersion = BigInt(tokenId.property_version)
 
   // Ensure account exists
   await getOrCreateAccount(accountAddress, tx)
+
+  const token = await tx.token.findFirst({
+    where: {
+      tokenName: tokenId.token_data_id.name,
+      collection: {
+        creatorAddress: tokenId.token_data_id.creator
+      },
+      propertyVersion: propertyVersion
+    }
+  })
 
   await tx.tokenWithdraw.create({
     data: {
@@ -534,10 +608,11 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
     where: {
       accountAddress_tokenDataId: {
         accountAddress,
-        tokenDataId: tokenId.token_data_id
+        tokenDataId: tokenId
       }
     },
     data: {
+      tokenId: token?.id,
       balance: {
         decrement: amount
       }
