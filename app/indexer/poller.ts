@@ -105,7 +105,7 @@ export class EventPoller {
         
         try {
           await prismadb.$transaction(async (tx) => {
-            await processEvents(eventChunk, tx)
+            await processEvents(eventChunk)
             
             if (i + chunkSize >= events.length) {
               // Store the last processed block (endBlock - 1)
