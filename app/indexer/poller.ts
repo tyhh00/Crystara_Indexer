@@ -83,7 +83,6 @@ export class EventPoller {
   }
 
   private async processBatch() {
-    // endBlock is exclusive, so this is correct
     const endBlock = Math.min(
       this.currentBlockHeight + BATCH_SIZE,
       this.latestBlockHeight
@@ -93,48 +92,31 @@ export class EventPoller {
       return
     }
 
-    logger.info(`Processing blocks ${this.currentBlockHeight} to ${endBlock - 1}`) // Log inclusive range
+    logger.info(`Processing blocks ${this.currentBlockHeight} to ${endBlock - 1}`)
 
     try {
-      // This is correct as endBlock is already exclusive
       const events = await fetchBlockEvents(this.currentBlockHeight, endBlock)
       
-      const chunkSize = 5
-      for (let i = 0; i < events.length; i += chunkSize) {
-        const eventChunk = events.slice(i, i + chunkSize)
-        
-        try {
-          await prismadb.$transaction(async (tx) => {
-            await processEvents(eventChunk)
-            
-            if (i + chunkSize >= events.length) {
-              // Store the last processed block (endBlock - 1)
-              await tx.blockProgress.update({
-                where: { id: 1 },
-                data: { lastBlockHeight: BigInt(endBlock - 1) }
-              })
-            }
-          }, { timeout: 30000 })
-
-          logger.debug(`Processed chunk ${i/chunkSize + 1} of ${Math.ceil(events.length/chunkSize)}`)
-        } catch (chunkError) {
-          // Record failed chunk outside of the failed transaction
-          await prismadb.eventTracking.create({
-            data: {
-              eventType: 'CHUNK_PROCESSING',
-              blockHeight: BigInt(this.currentBlockHeight),
-              transactionHash: '',
-              processed: false,
-              error: chunkError instanceof Error ? chunkError.message : 'Unknown error'
-            }
-          })
+      // Process all events in a single transaction but in ordered chunks
+      await prismadb.$transaction(async (tx) => {
+        const chunkSize = 10
+        for (let i = 0; i < events.length; i += chunkSize) {
+          const eventChunk = events.slice(i, i + chunkSize)
+          await processEvents(eventChunk, tx)
           
-          // Re-throw to trigger batch retry
-          throw chunkError
+          // Update progress after each chunk
+          if (i + chunkSize >= events.length) {
+            await tx.blockProgress.update({
+              where: { id: 1 },
+              data: { lastBlockHeight: BigInt(endBlock - 1) }
+            })
+          }
         }
-      }
+      }, {
+        maxWait: 30000, // Maximum time to wait for transaction
+        timeout: 30000  // Maximum time for transaction to complete
+      })
 
-      // This is correct as endBlock is already the next block to process
       this.currentBlockHeight = endBlock
     } catch (error) {
       logger.error(`Error processing batch ${this.currentBlockHeight}-${endBlock - 1}:`, error)

@@ -26,95 +26,105 @@ async function getOrCreateAccount(address: string, tx: TransactionClient) {
   return account
 }
 
-export async function processEvents(events: any[]) {
-  //logger.debug(`Processing ${events.length} events`, events)
+export async function processEvents(events: any[], tx: TransactionClient) {
+  logger.debug(`Processing ${events.length} events`)
   
   for (const event of events) {
     try {
-      //logger.debug(`Processing event of type ${event.type}`, event)
+      logger.debug(`Processing event of type ${event.type}`)
       
-      // Process each event in its own transaction
-      await prismadb.$transaction(async (tx) => {
-        // Track the event before processing
-        await tx.eventTracking.create({
-          data: {
-            eventType: event.type,
-            blockHeight: BigInt(event.blockHeight || 0),
-            transactionHash: event.transactionHash || '',
-            processed: false,
-            error: null
-          }
-        })
-        
-        // Process the event
-        switch (event.type) {
-          case `${MODULE_PATH}::LootboxCreatedEvent`:
-            await processLootboxCreated(event, tx)
-            break
-          case `${MODULE_PATH}::LootboxPurchaseInitiatedEvent`:
-            await processLootboxPurchaseInitiated(event, tx)
-            break
-          case `${MODULE_PATH}::LootboxRewardDistributedEvent`:
-            await processLootboxRewardDistributed(event, tx)
-            break
-          case `${MODULE_PATH}::RaritiesSetEvent`:
-            await processRaritiesSet(event, tx)
-            break
-          case `${MODULE_PATH}::TokenAddedEvent`:
-            await processTokenAdded(event, tx)
-            break
-          case `${MODULE_PATH}::PriceUpdatedEvent`:
-            await processPriceUpdated(event, tx)
-            break
-          case `${MODULE_PATH}::VRFCallbackReceivedEvent`:
-            await processVRFCallback(event, tx)
-            break
-          case `${MODULE_PATH}::TokensClaimedEvent`:
-            await processTokensClaimed(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::TokenBurnEvent`:
-            await processTokenBurn(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::TokenMintEvent`:
-            await processTokenMint(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::MintTokenEvent`:
-            await processTokenMint(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::CreateTokenDataEvent`:
-            await processTokenData(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::CreateCollectionEvent`:
-            await processTokenCollection(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::DepositEvent`:
-            await processTokenDeposit(event, tx)
-            break
-          case `${TOKEN_MODULE_PATH}::WithdrawEvent`:
-            await processTokenWithdraw(event, tx)
-            break
-          case `${MODULE_PATH}::LootboxStatusUpdatedEvent`:
-            await processLootboxStatusUpdated(event, tx)
-            break
-          default:
-            logger.warn(`Unknown event type: ${event.type}`)
+      // Create event tracking record
+      await tx.eventTracking.create({
+        data: {
+          eventType: event.type,
+          blockHeight: BigInt(event.blockHeight || 0),
+          transactionHash: event.transactionHash || '',
+          processed: false,
+          error: null
         }
-
-        // Mark event as processed
-        await tx.eventTracking.updateMany({
-          where: {
-            eventType: event.type,
-            blockHeight: BigInt(event.blockHeight || 0),
-            processed: false
-          },
-          data: {
-            processed: true
-          }
-        })
       })
-      
+
+      switch (event.type) {
+        case `${MODULE_PATH}::LootboxCreatedEvent`:
+          await processLootboxCreated(event, tx)
+          break
+        case `${MODULE_PATH}::LootboxPurchaseInitiatedEvent`:
+          await processLootboxPurchaseInitiated(event, tx)
+          break
+        case `${MODULE_PATH}::LootboxRewardDistributedEvent`:
+          await processLootboxRewardDistributed(event, tx)
+          break
+        case `${MODULE_PATH}::RaritiesSetEvent`:
+          await processRaritiesSet(event, tx)
+          break
+        case `${MODULE_PATH}::TokenAddedEvent`:
+          await processTokenAdded(event, tx)
+          break
+        case `${MODULE_PATH}::PriceUpdatedEvent`:
+          await processPriceUpdated(event, tx)
+          break
+        case `${MODULE_PATH}::VRFCallbackReceivedEvent`:
+          await processVRFCallback(event, tx)
+          break
+        case `${MODULE_PATH}::TokensClaimedEvent`:
+          await processTokensClaimed(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::TokenBurnEvent`:
+          await processTokenBurn(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::TokenMintEvent`:
+          await processTokenMint(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::MintTokenEvent`:
+          await processTokenMint(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::CreateTokenDataEvent`:
+          await processTokenData(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::CreateCollectionEvent`:
+          await processTokenCollection(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::DepositEvent`:
+          await processTokenDeposit(event, tx)
+          break
+        case `${TOKEN_MODULE_PATH}::WithdrawEvent`:
+          await processTokenWithdraw(event, tx)
+          break
+        case `${MODULE_PATH}::LootboxStatusUpdatedEvent`:
+          await processLootboxStatusUpdated(event, tx)
+          break
+        default:
+          logger.warn(`Unknown event type: ${event.type}`)
+      }
+
+      // Update event as processed
+      await tx.eventTracking.updateMany({
+        where: {
+          eventType: event.type,
+          blockHeight: BigInt(event.blockHeight || 0),
+          processed: false
+        },
+        data: {
+          processed: true
+        }
+      })
+
     } catch (error) {
       logger.error(`Error processing event ${event.type}:`, error)
+      
+      // Log failed event
+      await tx.eventTracking.updateMany({
+        where: {
+          eventType: event.type,
+          blockHeight: BigInt(event.blockHeight || 0),
+          processed: false
+        },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          processed: false
+        }
+      })
+
       throw error
     }
   }
