@@ -2,25 +2,27 @@ const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true'
 
 const logger = createLogger('utils');
 
-export function createLogger(context: string) {
+export function createLogger(name: string) {
   return {
-    info: (message: string, ...args: any[]) => {
-      console.log(`[${context}] ${message}`, ...args)
+    debug: (...args: any[]) => {
+      console.log(`[${name}] DEBUG:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : arg
+      ))
     },
-    error: (message: string, ...args: any[]) => {
-      console.error(`[${context}] ERROR: ${message}`, ...args)
+    info: (...args: any[]) => {
+      console.log(`[${name}] INFO:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : arg
+      ))
     },
-    warn: (message: string, ...args: any[]) => {
-      console.warn(`[${context}] WARN: ${message}`, ...args)
+    warn: (...args: any[]) => {
+      console.log(`[${name}] WARN:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : arg
+      ))
     },
-    debug: (message: string, ...args: any[]) => {
-      if (DEBUG_MODE) {
-        console.log(`[${context}] 🔍 DEBUG: ${message}`, 
-          ...args.map((arg: any) => 
-            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg
-          )
-        )
-      }
+    error: (...args: any[]) => {
+      console.log(`[${name}] ERROR:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : arg
+      ))
     }
   }
 }

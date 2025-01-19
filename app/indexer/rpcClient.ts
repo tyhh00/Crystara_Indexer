@@ -58,21 +58,8 @@ export async function fetchBlockEvents(
     try {
       // Group similar events together to reduce API calls
       const moduleEvents = [
-        // Crystara module events
-        ...await fetchEventsByTypes([
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::TokenAddedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::TokensClaimedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::CollectionCreatedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::RaritiesSetEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxCreatedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxPurchaseInitiatedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxRewardDistributedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::PriceUpdatedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::VRFCallbackReceivedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxStatusUpdatedEvent`
-        ], startBlock, endBlock),
-        
-        // Token module events
+
+                // Token module events
         ...await fetchEventsByTypes([
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::MintTokenEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::CreateTokenDataEvent`,
@@ -80,6 +67,19 @@ export async function fetchBlockEvents(
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::DepositEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::WithdrawEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::BurnTokenEvent`
+        ], startBlock, endBlock),
+
+        // Crystara module events
+        ...await fetchEventsByTypes([
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::TokenAddedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::TokensClaimedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::RaritiesSetEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxCreatedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxPurchaseInitiatedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxRewardDistributedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::PriceUpdatedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::VRFCallbackReceivedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxStatusUpdatedEvent`
         ], startBlock, endBlock)
       ]
 
@@ -140,48 +140,61 @@ async function fetchTokenTransferEvents(startBlock: number, endBlock: number): P
   return fetchEventsByTypes(eventTypes, startBlock, endBlock)
 }
 
-// Update fetchEventsByTypes to handle rate limits per event type
+const BATCH_SIZE = 6  // Adjust based on rate limits
+const RETRY_DELAY = 2000
+
 async function fetchEventsByTypes(
   eventTypes: string[], 
   startBlock: number, 
   endBlock: number
 ): Promise<any[]> {
   const events: any[] = []
-  const promises = eventTypes.map(async (eventType) => {
-    try {
-      const url = `${SUPRA_RPC_URL}/events/${eventType}?start=${startBlock}&end=${endBlock}`
-      const response = await fetch(url)
+  
+  // Process event types in smaller batches
+  for (let i = 0; i < eventTypes.length; i += BATCH_SIZE) {
+    const batchTypes = eventTypes.slice(i, i + BATCH_SIZE)
+    
+    // Fetch batch with retry logic
+    const batchPromises = batchTypes.map(async (eventType) => {
+      let retries = 0
+      while (retries < 3) {
+        try {
+          const url = `${SUPRA_RPC_URL}/events/${eventType}?start=${startBlock}&end=${endBlock}`
+          const response = await fetch(url)
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          await sleep(2000)
-          return []
+          if (response.status === 429) {
+            logger.debug('Rate limit exceeded, sleeping for 2 seconds')
+            retries++
+            await sleep(RETRY_DELAY * Math.pow(2, retries))
+            continue
+          }
+
+          if (!response.ok) return []
+
+          const responseData = await response.json()
+          if (!responseData?.data?.length) return []
+
+          return responseData.data.map((event: any) => ({
+            type: eventType,
+            guid: event.guid,
+            sequenceNumber: event.sequence_number,
+            timestamp: event.data.timestamp ?? -1,
+            data: event.data
+          }))
+        } catch {
+          retries++
+          await sleep(RETRY_DELAY * Math.pow(2, retries))
         }
-        return []
       }
-
-      const responseData = await response.json()
-      if (!responseData?.data?.length) return []
-
-      return responseData.data.map((event: any) => ({
-        type: eventType,
-        guid: event.guid,
-        sequenceNumber: event.sequence_number,
-        timestamp: event.data.timestamp ?? -1,
-        data: event.data
-      }))
-    } catch {
       return []
-    }
-  })
+    })
 
-  // Process in batches of 5 to avoid overwhelming the API
-  const batchSize = 6
-  for (let i = 0; i < promises.length; i += batchSize) {
-    const batch = promises.slice(i, i + batchSize)
-    const results = await Promise.all(batch)
-    events.push(...results.flat())
-    if (i + batchSize < promises.length) {
+    // Wait for batch to complete
+    const batchResults = await Promise.all(batchPromises)
+    events.push(...batchResults.flat())
+    
+    // Add delay between batches
+    if (i + BATCH_SIZE < eventTypes.length) {
       await sleep(RATE_LIMIT_DELAY)
     }
   }

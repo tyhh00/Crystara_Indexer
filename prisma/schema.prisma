@@ -32,54 +32,38 @@ model EventTracking {
   @@index([processed])
 }
 
-model Collection {
-  id             Int       @id @default(autoincrement())
-  creatorAddress String
-  collectionName String
-  metadataUri    String
-  tokens         Token[]
-  lootboxes      Lootbox[]
-  rarities       Rarity[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  @@unique([creatorAddress, collectionName])
-  @@index([creatorAddress])
-  @@index([collectionName])
-}
-
 model Rarity {
   id           Int        @id @default(autoincrement())
-  collection   Collection @relation(fields: [collectionId], references: [id])
-  collectionId Int
+  lootbox      Lootbox     @relation(fields: [lootboxId], references: [id])
+  lootboxId    Int
   rarityName   String
   weight       BigInt
   tokens       Token[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  @@index([collectionId])
+  @@index([lootboxId])
   @@index([rarityName])
 }
 
 model Token {
-  id           Int        @id @default(autoincrement())
-  collection   Collection @relation(fields: [collectionId], references: [id])
-  collectionId Int
-  rarity       Rarity     @relation(fields: [rarityId], references: [id])
-  rarityId     Int
-  tokenName    String
-  tokenUri     String
-  balances      TokenBalance[]
+  id               Int            @id @default(autoincrement())
+  tokenCollection  TokenCollection @relation(fields: [tokenCollectionId], references: [id])
+  tokenCollectionId Int
+  rarity          Rarity?        @relation(fields: [rarityId], references: [id])  // Make optional
+  rarityId        Int?           // Make optional
+  tokenName       String
+  tokenUri        String
+  balances        TokenBalance[]
   propertyVersion BigInt
-  maxSupply    BigInt
+  maxSupply       BigInt
   circulatingSupply BigInt
-  tokensBurned BigInt
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  tokensBurned    BigInt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  @@unique([collectionId, tokenName, propertyVersion])
-  @@index([collectionId])
+  @@unique([tokenCollectionId, tokenName, propertyVersion])
+  @@index([tokenCollectionId])
   @@index([rarityId])
   @@index([tokenName])
   @@index([propertyVersion])
@@ -87,23 +71,35 @@ model Token {
 
 model Lootbox {
   id              Int               @id @default(autoincrement())
-  collection      Collection        @relation(fields: [collectionId], references: [id])
-  collectionId    Int
+  tokenCollection TokenCollection?  @relation(fields: [tokenCollectionId], references: [id])
+  tokenCollectionId Int?            // Make optional
+  creatorAddress  String
+  collectionResourceAddress String
+  collectionName  String
+  collectionDescription String
+  metadataUri     String
+  rarities        Rarity[]
   price           BigInt
   priceCoinType   String
   maxStock        BigInt
   availableStock  BigInt
-  isActive        Boolean          @default(false)
+  isActive        Boolean          
+  isWhitelisted   Boolean          
+  autoTriggerWhitelistTime BigInt
+  autoTriggerActiveTime BigInt
   purchases       LootboxPurchase[]
   watchlistedBy   Account[]         @relation("LootboxWatchlist")
   followers       Account[]         @relation("LootboxFollowers")
   totalVolume     BigInt           @default(0)
   purchaseCount   Int              @default(0)
+  analytics       LootboxAnalytics?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   timestamp       BigInt
 
-  @@index([collectionId])
+  @@index([tokenCollectionId])
+  @@index([creatorAddress])
+  @@index([collectionName])
   @@index([priceCoinType])
   @@index([isActive])
   @@index([totalVolume])
@@ -217,6 +213,8 @@ model TokenCollection {
   description   String
   uri           String
   maximum       BigInt
+  tokens        Token[]
+  lootboxes     Lootbox[]  // Required by Prisma
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -306,9 +304,10 @@ model TokenTransaction {
   @@index([toAddress])
 }
 
-model CollectionAnalytics {
+model LootboxAnalytics {
   id              Int      @id @default(autoincrement())
-  collectionId    Int      @unique
+  lootbox         Lootbox  @relation(fields: [lootboxId], references: [id])
+  lootboxId       Int      @unique
   volume24h       BigInt   @default(0)
   purchases24h    Int      @default(0)
   uniqueBuyers24h Int      @default(0)

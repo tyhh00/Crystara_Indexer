@@ -7,7 +7,7 @@ const logger = createLogger('poller')
 
 const BATCH_SIZE = 10 // Number of blocks to process in each batch
 const MAX_RETRIES = 3
-const POLLING_INTERVAL = 50 // 1 second
+const POLLING_INTERVAL = 1 //1ms
 
 interface PollerConfig {
   maxRequestsPerSecond: number
@@ -72,7 +72,7 @@ export class EventPoller {
         }
       } catch (error) {
         logger.error('Error in polling loop:', error)
-        await sleep(POLLING_INTERVAL)
+        //await sleep(POLLING_INTERVAL)
       }
     }
   }
@@ -83,6 +83,7 @@ export class EventPoller {
   }
 
   private async processBatch() {
+    // endBlock is exclusive, so this is correct
     const endBlock = Math.min(
       this.currentBlockHeight + BATCH_SIZE,
       this.latestBlockHeight
@@ -92,9 +93,10 @@ export class EventPoller {
       return
     }
 
-    logger.info(`Processing blocks ${this.currentBlockHeight} to ${endBlock}`)
+    logger.info(`Processing blocks ${this.currentBlockHeight} to ${endBlock - 1}`) // Log inclusive range
 
     try {
+      // This is correct as endBlock is already exclusive
       const events = await fetchBlockEvents(this.currentBlockHeight, endBlock)
       
       const chunkSize = 5
@@ -106,13 +108,12 @@ export class EventPoller {
             await processEvents(eventChunk, tx)
             
             if (i + chunkSize >= events.length) {
+              // Store the last processed block (endBlock - 1)
               await tx.blockProgress.update({
                 where: { id: 1 },
-                data: { lastBlockHeight: BigInt(endBlock) }
+                data: { lastBlockHeight: BigInt(endBlock - 1) }
               })
             }
-          }, {
-            timeout: 30000
           })
 
           logger.debug(`Processed chunk ${i/chunkSize + 1} of ${Math.ceil(events.length/chunkSize)}`)
@@ -133,9 +134,10 @@ export class EventPoller {
         }
       }
 
-      this.currentBlockHeight = endBlock + 1
+      // This is correct as endBlock is already the next block to process
+      this.currentBlockHeight = endBlock
     } catch (error) {
-      logger.error(`Error processing batch ${this.currentBlockHeight}-${endBlock}:`, error)
+      logger.error(`Error processing batch ${this.currentBlockHeight}-${endBlock - 1}:`, error)
       await sleep(POLLING_INTERVAL)
     }
   }
