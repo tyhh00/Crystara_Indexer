@@ -114,7 +114,7 @@ export class EventPoller {
                 data: { lastBlockHeight: BigInt(endBlock - 1) }
               })
             }
-          })
+          }, { timeout: 30000 })
 
           logger.debug(`Processed chunk ${i/chunkSize + 1} of ${Math.ceil(events.length/chunkSize)}`)
         } catch (chunkError) {
