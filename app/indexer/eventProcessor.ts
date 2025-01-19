@@ -327,6 +327,7 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
       maxSupply: BigInt(event.data.max_supply),
       circulatingSupply: BigInt(0),
       tokensBurned: BigInt(0),
+      propertyVersion: BigInt(0),
     }
   })
   logger.info(`Processed TokenAddedEvent: ${token.id}`)
