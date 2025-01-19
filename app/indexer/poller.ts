@@ -95,31 +95,47 @@ export class EventPoller {
     logger.info(`Processing blocks ${this.currentBlockHeight} to ${endBlock}`)
 
     try {
-      // Fetch events for the batch of blocks
       const events = await fetchBlockEvents(this.currentBlockHeight, endBlock)
+      
+      const chunkSize = 5
+      for (let i = 0; i < events.length; i += chunkSize) {
+        const eventChunk = events.slice(i, i + chunkSize)
+        
+        try {
+          await prismadb.$transaction(async (tx) => {
+            await processEvents(eventChunk, tx)
+            
+            if (i + chunkSize >= events.length) {
+              await tx.blockProgress.update({
+                where: { id: 1 },
+                data: { lastBlockHeight: BigInt(endBlock) }
+              })
+            }
+          }, {
+            timeout: 30000
+          })
 
-      // Process events in transaction
-      await prismadb.$transaction(async (tx) => {
-        await processEvents(events, tx)
-
-        // Update block progress
-        await tx.blockProgress.update({
-          where: { id: 1 },
-          data: { lastBlockHeight: BigInt(endBlock) }
-        })
-
-        // Add debug log to confirm transaction completion
-        logger.debug('Transaction completed successfully')
-      })
+          logger.debug(`Processed chunk ${i/chunkSize + 1} of ${Math.ceil(events.length/chunkSize)}`)
+        } catch (chunkError) {
+          // Record failed chunk outside of the failed transaction
+          await prismadb.eventTracking.create({
+            data: {
+              eventType: 'CHUNK_PROCESSING',
+              blockHeight: BigInt(this.currentBlockHeight),
+              transactionHash: '',
+              processed: false,
+              error: chunkError instanceof Error ? chunkError.message : 'Unknown error'
+            }
+          })
+          
+          // Re-throw to trigger batch retry
+          throw chunkError
+        }
+      }
 
       this.currentBlockHeight = endBlock + 1
     } catch (error) {
       logger.error(`Error processing batch ${this.currentBlockHeight}-${endBlock}:`, error)
-      
-      // Record failed events for retry
-      await this.recordFailedEvents(this.currentBlockHeight, endBlock, error)
-      
-      // Implement exponential backoff or other retry strategy
       await sleep(POLLING_INTERVAL)
     }
   }

@@ -33,16 +33,18 @@ export async function processEvents(events: any[], tx: TransactionClient) {
     try {
       logger.debug(`Processing event of type ${event.type}`, event)
       
-      // Track the event
+      // Track the event before processing
       await tx.eventTracking.create({
         data: {
           eventType: event.type,
           blockHeight: BigInt(event.blockHeight || 0),
           transactionHash: event.transactionHash || '',
-          processed: true
+          processed: false, // Mark as unprocessed initially
+          error: null
         }
       })
       
+      // Process the event
       switch (event.type) {
         case `${MODULE_PATH}::CollectionCreatedEvent`:
           await processCollectionCreated(event, tx)
@@ -99,25 +101,23 @@ export async function processEvents(events: any[], tx: TransactionClient) {
           logger.warn(`Unknown event type: ${event.type}`)
       }
 
-      // Add debug log after successful processing
-      logger.debug('Successfully processed event and committed to database')
+      // Update event tracking to mark as processed
+      await tx.eventTracking.updateMany({
+        where: {
+          eventType: event.type,
+          blockHeight: BigInt(event.blockHeight || 0),
+          processed: false
+        },
+        data: {
+          processed: true
+        }
+      })
       
     } catch (error) {
       logger.error(`Error processing event ${event.type}:`, error)
       
-      // Track failed event
-      await tx.eventTracking.create({
-        data: {
-          eventType: event.type,
-          blockHeight: BigInt(event.blockHeight || 0),
-          transactionHash: event.transactionHash || '',
-          processed: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }
-      })
-      
-      // Add this log to see if we're hitting this error path
-      logger.error('Transaction will be rolled back due to error')
+      // Don't try to create a new tracking record, just throw the error
+      // The transaction will be rolled back and retried by the poller
       throw error
     }
   }
