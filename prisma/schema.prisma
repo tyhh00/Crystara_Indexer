@@ -344,6 +344,7 @@ model OFFChain_LootboxStats {
   viewCount       Int      @default(0)
   likeCount       Int      @default(0)
   trendingScore   Float    @default(0)
+  raritiesColorMap String? @default("")
   isAdvertised    Boolean  @default(false)
   isVerified      Boolean  @default(false)
   categories      String[]  // Keep as String[] for simplicity
