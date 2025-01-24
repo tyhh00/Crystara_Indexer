@@ -318,6 +318,14 @@ model LootboxAnalytics {
   @@index([uniqueBuyers24h])
 }
 
+model OFFChain_Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
 model OFFChain_Account {
   id                Int       @id @default(autoincrement())
   walletAddress     String    @unique  // Links to on-chain Account
@@ -327,10 +335,6 @@ model OFFChain_Account {
   lastLoginAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  
-  // Relations
-  likedLootboxes   OFFChain_LootboxLike[]
-  viewHistory      OFFChain_LootboxView[]
 }
 
 model OFFChain_LootboxStats {
@@ -341,37 +345,10 @@ model OFFChain_LootboxStats {
   likeCount       Int      @default(0)
   trendingScore   Float    @default(0)
   isAdvertised    Boolean  @default(false)
-  categories      String[]
-  rarityiesColorMap String?
+  isVerified      Boolean  @default(false)
+  categories      String[]  // Keep as String[] for simplicity
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  
-  likes           OFFChain_LootboxLike[]
-  views           OFFChain_LootboxView[]
 
   @@index([url])
-}
-
-model OFFChain_LootboxLike {
-  id              Int       @id @default(autoincrement())
-  account         OFFChain_Account    @relation(fields: [accountId], references: [id])
-  accountId       Int
-  lootboxStats    OFFChain_LootboxStats @relation(fields: [lootboxStatsId], references: [id])
-  lootboxStatsId  Int
-  createdAt       DateTime @default(now())
-
-  @@unique([accountId, lootboxStatsId])
-}
-
-model OFFChain_LootboxView {
-  id              Int       @id @default(autoincrement())
-  account         OFFChain_Account    @relation(fields: [accountId], references: [id])
-  accountId       Int
-  lootboxStats    OFFChain_LootboxStats @relation(fields: [lootboxStatsId], references: [id])
-  lootboxStatsId  Int
-  viewedAt        DateTime @default(now())
-
-  @@index([accountId])
-  @@index([lootboxStatsId])
-  @@index([viewedAt])
 }
