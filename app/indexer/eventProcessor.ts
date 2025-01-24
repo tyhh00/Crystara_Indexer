@@ -130,6 +130,28 @@ export async function processEvents(events: any[], tx: TransactionClient) {
   }
 }
 
+async function generateUniqueUrl(collectionName: string, tx: TransactionClient, creatorAddress: string): Promise<string> {
+  const baseUrl = collectionName.toLowerCase().replace(/\s+/g, '-');
+  const MAX_ATTEMPTS = 5;
+  
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    // Generate 6-digit random number
+    const randomId = Math.floor(10000000*i + Math.random() * 90000000*i);
+    let newUrl = `${baseUrl}`;
+    if(i>0)
+      newUrl = newUrl + `-${creatorAddress}`
+    newUrl = newUrl + `-${randomId}`;
+    
+    const exists = await tx.oFFChain_LootboxStats.findUnique({
+      where: { url: newUrl }
+    });
+    
+    if (!exists) return newUrl;
+  }
+  
+  throw new Error('Failed to generate unique URL after maximum attempts');
+}
+
 async function processLootboxCreated(event: any, tx: TransactionClient) {
   logger.debug('Processing lootbox creation', event)
   
@@ -170,6 +192,31 @@ async function processLootboxCreated(event: any, tx: TransactionClient) {
         timestamp: BigInt(event.data.timestamp),
         totalVolume: BigInt(0),
         purchaseCount: 0
+      }
+    });
+
+    // Create off-chain stats asynchronously
+    setImmediate(async () => {
+      try {
+        await prismadb.$transaction(async (newTx) => {
+          const url = await generateUniqueUrl(collectionName, newTx, creatorAddress);
+          await newTx.oFFChain_LootboxStats.create({
+            data: {
+              lootboxId: lootbox.id,
+              url,
+              viewCount: 0,
+              likeCount: 0,
+              trendingScore: 0,
+              isAdvertised: false,
+              isVerified: false,
+              categories: [],
+            }
+          });
+        });
+        logger.info(`Created off-chain stats for lootbox ${lootbox.id}`);
+      } catch (error) {
+        logger.error(`Failed to create off-chain stats for lootbox ${lootbox.id}:`, error);
+        // Could add retry logic here if needed
       }
     });
 
