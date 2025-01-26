@@ -73,8 +73,8 @@ export async function fetchBlockEvents(
         ...await fetchEventsByTypes([
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::TokenAddedEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::TokensClaimedEvent`,
-          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::RaritiesSetEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxCreatedEvent`,
+          `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::RaritiesSetEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxPurchaseInitiatedEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxRewardDistributedEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::PriceUpdatedEvent`,
