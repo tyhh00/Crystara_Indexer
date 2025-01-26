@@ -7,9 +7,11 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         DEBUG: '*',
+        PM2_NO_AUTOMATION: 'true',
+        PM2_SILENT: 'true',
+        PM2_METRICS: 'false'
       },
       max_memory_restart: '1G',
-      log_file: 'logs/combined.log',
       time: true,
       instances: 1,
       autorestart: true,
@@ -17,18 +19,17 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 5000,
       env_file: '.env',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      log_type: 'raw',
-      
-      // Disable PM2 metrics
       metrics: false,
       deep_metrics: false,
       trace: false,
       disable_metrics: true,
       axm_options: {
-        metrics: {
-          transaction: false
-        }
+        metrics: false,
+        human_info: false,
+        transactions: false,
+        http: false,
+        v8: false,
+        events: false
       }
     }
   ]
