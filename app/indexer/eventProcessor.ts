@@ -110,22 +110,19 @@ export async function processEvents(events: any[], tx: TransactionClient) {
       })
 
     } catch (error) {
-      logger.error(`Error processing event ${event.type}:`, error)
-      
-      // Log failed event
-      await tx.eventTracking.updateMany({
-        where: {
-          eventType: event.type,
-          blockHeight: BigInt(event.blockHeight || 0),
-          processed: false
-        },
+      // Log the error in event tracking
+      await tx.eventTracking.create({
         data: {
+          eventType: 'ERROR',
+          blockHeight: BigInt(event.blockHeight || 0),
+          transactionHash: event.transactionHash || '',
+          processed: false,
           error: error instanceof Error ? error.message : String(error),
-          processed: false
         }
-      })
-
-      throw error
+      });
+      
+      logger.error(`Failed to process event:`, error);
+      throw error;
     }
   }
 }
