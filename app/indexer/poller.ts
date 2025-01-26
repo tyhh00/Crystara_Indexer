@@ -95,29 +95,37 @@ export class EventPoller {
     logger.info(`Processing blocks ${this.currentBlockHeight} to ${endBlock - 1}`)
 
     try {
+      // Fetch events before transaction starts
       const events = await fetchBlockEvents(this.currentBlockHeight, endBlock)
       
-      // Process all events in a single transaction but in ordered chunks
+      // Single transaction for all operations
       await prismadb.$transaction(async (tx) => {
-        const chunkSize = 10
-        for (let i = 0; i < events.length; i += chunkSize) {
-          const eventChunk = events.slice(i, i + chunkSize)
-          await processEvents(eventChunk, tx)
+        // Process all events first
+        if (events.length > 0) {
+          const processPromises = []
+          const chunkSize = 10
           
-          // Update progress after each chunk
-          if (i + chunkSize >= events.length) {
-            await tx.blockProgress.update({
-              where: { id: 1 },
-              data: { lastBlockHeight: BigInt(endBlock - 1) }
-            })
+          for (let i = 0; i < events.length; i += chunkSize) {
+            const eventChunk = events.slice(i, i + chunkSize)
+            processPromises.push(processEvents(eventChunk, tx))
           }
+
+          // Wait for all chunks to complete
+          await Promise.all(processPromises)
         }
+        
+        // Update block progress last, in same transaction
+        return tx.blockProgress.update({
+          where: { id: 1 },
+          data: { lastBlockHeight: BigInt(endBlock - 1) }
+        })
       }, {
-        maxWait: 30000, // Maximum time to wait for transaction
-        timeout: 30000  // Maximum time for transaction to complete
+        maxWait: 30000,
+        timeout: 30000
       })
 
       this.currentBlockHeight = endBlock
+      logger.info(`Updated block progress to ${endBlock - 1}`)
     } catch (error) {
       logger.error(`Error processing batch ${this.currentBlockHeight}-${endBlock - 1}:`, error)
       await sleep(POLLING_INTERVAL)

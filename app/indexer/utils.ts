@@ -5,23 +5,27 @@ const logger = createLogger('utils');
 export function createLogger(name: string) {
   return {
     debug: (...args: any[]) => {
-      console.log(`[${name}] DEBUG:`, ...args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : arg
+      console.debug(`[${name}] DEBUG:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : 
+        typeof arg === 'object' ? JSON.stringify(arg) : arg
       ))
     },
     info: (...args: any[]) => {
-      console.log(`[${name}] INFO:`, ...args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : arg
+      console.info(`[${name}] INFO:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : 
+        typeof arg === 'object' ? JSON.stringify(arg) : arg
       ))
     },
     warn: (...args: any[]) => {
-      console.log(`[${name}] WARN:`, ...args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : arg
+      console.warn(`[${name}] WARN:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : 
+        typeof arg === 'object' ? JSON.stringify(arg) : arg
       ))
     },
     error: (...args: any[]) => {
-      console.log(`[${name}] ERROR:`, ...args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : arg
+      console.error(`[${name}] ERROR:`, ...args.map(arg => 
+        typeof arg === 'bigint' ? arg.toString() : 
+        typeof arg === 'object' ? JSON.stringify(arg) : arg
       ))
     }
   }
