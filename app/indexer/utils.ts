@@ -7,36 +7,20 @@ const logger = createLogger('utils');
 export function createLogger(name: string) {
   return {
     debug: (...args: any[]) => {
-      const message = `[${name}] DEBUG: ${args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : 
-        typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ).join(' ')}`
-      pmx.emit('log:debug', message)
-      process.stdout.write(message + '\n')
+      const date = new Date().toISOString();
+      console.log(`[${date}][${name}] DEBUG:`, ...args);
     },
     info: (...args: any[]) => {
-      const message = `[${name}] INFO: ${args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : 
-        typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ).join(' ')}`
-      pmx.emit('log:info', message)
-      process.stdout.write(message + '\n')
+      const date = new Date().toISOString();
+      console.log(`[${date}][${name}] INFO:`, ...args);
     },
     warn: (...args: any[]) => {
-      const message = `[${name}] WARN: ${args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : 
-        typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ).join(' ')}`
-      pmx.emit('log:warn', message)
-      process.stderr.write(message + '\n')
+      const date = new Date().toISOString();
+      console.log(`[${date}][${name}] WARN:`, ...args);
     },
     error: (...args: any[]) => {
-      const message = `[${name}] ERROR: ${args.map(arg => 
-        typeof arg === 'bigint' ? arg.toString() : 
-        typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ).join(' ')}`
-      pmx.emit('log:error', message)
-      process.stderr.write(message + '\n')
+      const date = new Date().toISOString();
+      console.error(`[${date}][${name}] ERROR:`, ...args);
     }
   }
 }
