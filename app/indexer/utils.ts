@@ -1,3 +1,5 @@
+import pmx from '@pm2/io'
+
 const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true'
 
 const logger = createLogger('utils');
@@ -5,28 +7,36 @@ const logger = createLogger('utils');
 export function createLogger(name: string) {
   return {
     debug: (...args: any[]) => {
-      console.debug(`[${name}] DEBUG:`, ...args.map(arg => 
+      const message = `[${name}] DEBUG: ${args.map(arg => 
         typeof arg === 'bigint' ? arg.toString() : 
         typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ))
+      ).join(' ')}`
+      pmx.emit('log:debug', message)
+      process.stdout.write(message + '\n')
     },
     info: (...args: any[]) => {
-      console.info(`[${name}] INFO:`, ...args.map(arg => 
+      const message = `[${name}] INFO: ${args.map(arg => 
         typeof arg === 'bigint' ? arg.toString() : 
         typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ))
+      ).join(' ')}`
+      pmx.emit('log:info', message)
+      process.stdout.write(message + '\n')
     },
     warn: (...args: any[]) => {
-      console.warn(`[${name}] WARN:`, ...args.map(arg => 
+      const message = `[${name}] WARN: ${args.map(arg => 
         typeof arg === 'bigint' ? arg.toString() : 
         typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ))
+      ).join(' ')}`
+      pmx.emit('log:warn', message)
+      process.stderr.write(message + '\n')
     },
     error: (...args: any[]) => {
-      console.error(`[${name}] ERROR:`, ...args.map(arg => 
+      const message = `[${name}] ERROR: ${args.map(arg => 
         typeof arg === 'bigint' ? arg.toString() : 
         typeof arg === 'object' ? JSON.stringify(arg) : arg
-      ))
+      ).join(' ')}`
+      pmx.emit('log:error', message)
+      process.stderr.write(message + '\n')
     }
   }
 }
