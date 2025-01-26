@@ -30,28 +30,7 @@ export class EventPoller {
   }
 
   async initialize() {
-    // Get the last processed block from database or use starting block
-    const blockProgress = await prismadb.blockProgress.findFirst({
-      where: { id: 1 }
-    })
-
-    if (blockProgress) {
-      this.currentBlockHeight = Number(blockProgress.lastBlockHeight) + 1
-    } else {
-      // If no progress record exists, create one with starting block height
-      const startBlock = process.env.START_BLOCK_HEIGHT ? 
-        parseInt(process.env.START_BLOCK_HEIGHT) : 8270551 // Default starting block
-
-      await prismadb.blockProgress.create({
-        data: {
-          id: 1,
-          lastBlockHeight: BigInt(startBlock)
-        }
-      })
-      
-      this.currentBlockHeight = startBlock
-    }
-
+    await this.initializeBlockHeight()
     this.latestBlockHeight = await fetchLatestBlockHeight()
     logger.info(`Initialized poller at block ${this.currentBlockHeight}`)
   }
@@ -153,6 +132,44 @@ export class EventPoller {
       })
     } catch (error) {
       logger.error('Error recording failed events:', error)
+    }
+  }
+
+  private async initializeBlockHeight() {
+    const progress = await prismadb.blockProgress.findFirst({
+      where: { id: 1 }
+    })
+
+    const startBlockHeight = parseInt(process.env.START_BLOCK_HEIGHT || '0')
+
+    if (progress) {
+      const storedHeight = Number(progress.lastBlockHeight)
+      // If START_BLOCK_HEIGHT is higher than stored progress
+      if (startBlockHeight > storedHeight) {
+        // Log skipped blocks as a warning event
+        await prismadb.eventTracking.create({
+          data: {
+            eventType: 'WARNING',
+            blockHeight: BigInt(storedHeight),
+            transactionHash: '',
+            processed: true,
+            error: `Skipped blocks ${storedHeight} to ${startBlockHeight} due to START_BLOCK_HEIGHT environment variable`,
+          }
+        })
+        logger.warn(`Skipped blocks ${storedHeight} to ${startBlockHeight}`)
+      }
+      
+      this.currentBlockHeight = Math.max(storedHeight, startBlockHeight)
+      logger.info(`Resuming from block ${this.currentBlockHeight}`)
+    } else {
+      this.currentBlockHeight = startBlockHeight
+      await prismadb.blockProgress.create({
+        data: {
+          id: 1,
+          lastBlockHeight: BigInt(startBlockHeight)
+        }
+      })
+      logger.info(`Starting from block ${startBlockHeight}`)
     }
   }
 } 
