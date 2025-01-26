@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'indexer',
-      script: './node_modules/.bin/ts-node',
-      args: 'app/index.ts',
+      script: 'npm',
+      args: 'run dev:indexer',
       env: {
         NODE_ENV: 'development',
         DEBUG: '*',
