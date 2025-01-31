@@ -639,12 +639,12 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
   logger.debug('Processing token deposit', event)
   
   const tokenId = event.data.id
-  const accountAddress = tokenId.token_data_id.creator
+  const toAddress = event.guid.account_address // This is the destination address
   const amount = BigInt(event.data.amount)
   const propertyVersion = BigInt(tokenId.property_version)
 
-  // Ensure account exists
-  await getOrCreateAccount(accountAddress, tx)
+  // Ensure receiving account exists
+  await getOrCreateAccount(toAddress, tx)
 
   // Find associated token
   const token = await tx.token.findFirst({
@@ -663,20 +663,20 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
     data: {
       tokenId: event.data.id,
       amount: BigInt(event.data.amount),
-      toAddress: event.guid.account_address,
+      toAddress: toAddress,
     }
   })
 
-  // Update token balance
+  // Update token balance for the receiving address
   await tx.tokenBalance.upsert({
     where: {
       accountAddress_tokenDataId: {
-        accountAddress,
+        accountAddress: toAddress, // Using the destination address
         tokenDataId: tokenId.token_data_id
       }
     },
     create: {
-      accountAddress,
+      accountAddress: toAddress, // Using the destination address
       tokenDataId: tokenId.token_data_id,
       tokenId: token?.id, 
       balance: amount
@@ -692,11 +692,11 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
   // Record transaction with more details
   await tx.tokenTransaction.create({
     data: {
-      accountAddress,
+      accountAddress: toAddress, // Using the destination address
       tokenDataId: tokenId.token_data_id,
       transactionType: 'DEPOSIT',
       amount,
-      toAddress: event.guid.account_address,
+      toAddress: toAddress,
     }
   })
 
@@ -707,12 +707,12 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
   logger.debug('Processing token withdraw', event)
   
   const tokenId = event.data.id
-  const accountAddress = tokenId.token_data_id.creator
+  const fromAddress = event.guid.account_address // Address tokens are being withdrawn from
   const amount = BigInt(event.data.amount)
   const propertyVersion = BigInt(tokenId.property_version)
 
-  // Ensure account exists
-  await getOrCreateAccount(accountAddress, tx)
+  // Ensure withdrawing account exists
+  await getOrCreateAccount(fromAddress, tx)
 
   const token = await tx.token.findFirst({
     where: {
@@ -728,15 +728,15 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
     data: {
       tokenId: event.data.id,
       amount: BigInt(event.data.amount),
-      fromAddress: event.guid.account_address,
+      fromAddress: fromAddress,
     }
   })
 
-  // Update token balance
+  // Update token balance for the withdrawing address
   await tx.tokenBalance.update({
     where: {
       accountAddress_tokenDataId: {
-        accountAddress,
+        accountAddress: fromAddress,
         tokenDataId: tokenId.token_data_id
       }
     },
@@ -751,11 +751,11 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
   // Record transaction with more details
   await tx.tokenTransaction.create({
     data: {
-      accountAddress,
+      accountAddress: fromAddress,
       tokenDataId: tokenId.token_data_id,
       transactionType: 'WITHDRAW',
       amount,
-      fromAddress: event.guid.account_address,
+      fromAddress: fromAddress,
     }
   })
 
