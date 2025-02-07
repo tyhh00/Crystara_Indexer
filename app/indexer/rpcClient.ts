@@ -141,8 +141,8 @@ async function fetchTokenTransferEvents(startBlock: number, endBlock: number): P
   return fetchEventsByTypes(eventTypes, startBlock, endBlock)
 }
 
-const BATCH_SIZE = 6  // Adjust based on rate limits
-const RETRY_DELAY = 2000
+const BATCH_SIZE = 10  // Adjust based on rate limits
+const RETRY_DELAY = 3
 
 async function fetchEventsByTypes(
   eventTypes: string[], 

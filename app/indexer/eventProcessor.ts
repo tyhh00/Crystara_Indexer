@@ -563,12 +563,6 @@ async function processTokenMint(event: any, tx: TransactionClient) {
     }
   })
 
-  logger.debug('Found token:', token)
-  logger.debug('Found token:', token)
-  logger.debug('Found token:', token)
-  logger.debug('Found token:', token)
-  logger.debug('Found token:', token)
-
   // Update with better error handling
   const updateResult = await tx.token.updateMany({
     where: {
@@ -584,13 +578,6 @@ async function processTokenMint(event: any, tx: TransactionClient) {
       }
     }
   })
-
-  logger.debug('Update result:', updateResult)
-  logger.debug('Update result:', updateResult)
-  logger.debug('Update result:', updateResult)
-  logger.debug('Update result:', updateResult)
-  logger.debug('Update result:', updateResult)
-  logger.debug('Update result:', updateResult)
 
 
   logger.info(`Processed TokenMintEvent`)
@@ -747,22 +734,39 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
     }
   })
 
+  console.log("Tokenbalance update" , tokenId.token_data_id, tokenId.property_version, fromAddress, amount)
+
   // Update token balance for the withdrawing address
-  await tx.tokenBalance.update({
-    where: {
-      accountAddress_tokenDataId_propertyVersion: {
-        accountAddress: fromAddress,
-        tokenDataId: tokenId.token_data_id,
-        propertyVersion: BigInt(tokenId.property_version)
+  try{
+    const balanceResult = await tx.tokenBalance.update({
+      where: {
+        accountAddress_tokenDataId_propertyVersion: {
+          accountAddress: fromAddress,
+          tokenDataId: tokenId.token_data_id,
+          propertyVersion: BigInt(tokenId.property_version)
+        }
+      },
+      data: {
+        tokenId: token?.id,
+        balance: {
+          decrement: amount
+        }
       }
-    },
-    data: {
-      tokenId: token?.id,
-      balance: {
-        decrement: amount
+    })
+  } catch (error) {
+    await tx.eventTracking.create({
+      data: {
+        eventType: 'ERROR',
+        blockHeight: BigInt(event.blockHeight || 0),
+        transactionHash: event.transactionHash || '',
+        processed: false,
+        error: `Base token not found for withdrawal: ${JSON.stringify(tokenId.token_data_id)} ${JSON.stringify(tokenId.property_version)} ${JSON.stringify(fromAddress)} ${JSON.stringify(amount.toString())}`,
       }
-    }
-  })
+    });
+    logger.error('Base token not found for withdrawal');
+  }
+
+
 
   // Record transaction with more details
   await tx.tokenTransaction.create({

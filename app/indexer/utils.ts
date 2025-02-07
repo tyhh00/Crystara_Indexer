@@ -8,7 +8,9 @@ export function createLogger(name: string) {
   return {
     debug: (...args: any[]) => {
       const date = new Date().toISOString();
-      console.log(`[${date}][${name}] DEBUG:`, ...args);
+      if (DEBUG_MODE) {
+        console.log(`[${date}][${name}] DEBUG:`, ...args);
+      }
     },
     info: (...args: any[]) => {
       const date = new Date().toISOString();
