@@ -64,9 +64,10 @@ export async function fetchBlockEvents(
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::MintTokenEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::CreateTokenDataEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::CreateCollectionEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::MutateTokenPropertyMapEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::DepositEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::WithdrawEvent`,
-          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::BurnTokenEvent`
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::BurnTokenEvent`,
         ], startBlock, endBlock),
 
         // Crystara module events

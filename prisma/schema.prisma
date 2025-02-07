@@ -53,7 +53,8 @@ model Token {
   updatedAt         DateTime        @updatedAt
   circulatingSupply BigInt
   tokensBurned      BigInt
-  propertyVersion   BigInt
+  propertyVersion   BigInt          @default(0)
+  propertyMaps      PropertyMap[]
   tokenCollectionId Int
   rarity            Rarity?         @relation(fields: [rarityId], references: [id])
   tokenCollection   TokenCollection @relation(fields: [tokenCollectionId], references: [id])
@@ -63,6 +64,22 @@ model Token {
   @@index([tokenCollectionId])
   @@index([rarityId])
   @@index([tokenName])
+  @@index([propertyVersion])
+}
+
+model PropertyMap {
+  id              Int      @id @default(autoincrement())
+  tokenId         Int      // Reference to base Token
+  propertyVersion BigInt   // The property version number
+  token           Token    @relation(fields: [tokenId], references: [id])
+  keys            String[] // Array of property keys
+  values          Json // Array of property values
+  types           String[] // Array of property types
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tokenId, propertyVersion])
+  @@index([tokenId])
   @@index([propertyVersion])
 }
 
@@ -261,18 +278,18 @@ model Account {
 }
 
 model TokenBalance {
-  id             Int      @id @default(autoincrement())
-  accountAddress String
-  tokenDataId    Json
-  balance        BigInt
-  lastUpdated    DateTime @updatedAt
-  tokenId        Int?
-  account        Account  @relation(fields: [accountAddress], references: [address])
-  token          Token?   @relation(fields: [tokenId], references: [id])
+  id              Int      @id @default(autoincrement())
+  accountAddress  String
+  tokenDataId     Json
+  tokenId         Int?
+  propertyVersion BigInt   @default(0)
+  balance         BigInt
+  lastUpdated     DateTime @updatedAt
+  token           Token?   @relation(fields: [tokenId], references: [id])
+  account         Account  @relation(fields: [accountAddress], references: [address])
 
-  @@unique([accountAddress, tokenDataId])
+  @@unique([accountAddress, tokenDataId, propertyVersion])
   @@index([accountAddress])
-  @@index([lastUpdated])
   @@index([tokenId])
 }
 

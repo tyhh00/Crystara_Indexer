@@ -93,6 +93,9 @@ export async function processEvents(events: any[], tx: TransactionClient) {
         case `${MODULE_PATH}::LootboxStatusUpdatedEvent`:
           await processLootboxStatusUpdated(event, tx)
           break
+        case `${TOKEN_MODULE_PATH}::MutateTokenPropertyMapEvent`:
+          await processTokenPropertyMutation(event, tx)
+          break
         default:
           logger.warn(`Unknown event type: ${event.type}`)
       }
@@ -670,19 +673,20 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
   // Update token balance for the receiving address
   await tx.tokenBalance.upsert({
     where: {
-      accountAddress_tokenDataId: {
-        accountAddress: toAddress, // Using the destination address
-        tokenDataId: tokenId.token_data_id
+      accountAddress_tokenDataId_propertyVersion: {
+        accountAddress: toAddress,
+        tokenDataId: tokenId.token_data_id,
+        propertyVersion: BigInt(tokenId.property_version)
       }
     },
     create: {
-      accountAddress: toAddress, // Using the destination address
+      accountAddress: toAddress,
       tokenDataId: tokenId.token_data_id,
-      tokenId: token?.id, 
+      tokenId: token?.id,
+      propertyVersion: BigInt(tokenId.property_version),
       balance: amount
     },
     update: {
-      tokenId: token?.id, 
       balance: {
         increment: amount
       }
@@ -735,9 +739,10 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
   // Update token balance for the withdrawing address
   await tx.tokenBalance.update({
     where: {
-      accountAddress_tokenDataId: {
+      accountAddress_tokenDataId_propertyVersion: {
         accountAddress: fromAddress,
-        tokenDataId: tokenId.token_data_id
+        tokenDataId: tokenId.token_data_id,
+        propertyVersion: BigInt(tokenId.property_version)
       }
     },
     data: {
@@ -806,4 +811,52 @@ export async function cleanupDayOldAnalytics(tx: TransactionClient) {
       uniqueBuyers24h: 0
     }
   })
+}
+
+async function processTokenPropertyMutation(event: any, tx: TransactionClient) {
+  logger.debug('Processing token property mutation', event)
+  
+  const oldTokenId = event.data.old_id
+  const newTokenId = event.data.new_id
+  
+  // Find the base token (property_version 0)
+  const baseToken = await tx.token.findFirst({
+    where: {
+      tokenName: oldTokenId.token_data_id.name,
+      tokenCollection: {
+        creator: oldTokenId.token_data_id.creator,
+        name: oldTokenId.token_data_id.collection
+      },
+      propertyVersion: BigInt(0) // Base version
+    }
+  })
+
+  if (!baseToken) {
+    logger.error('Base token not found for property mutation', oldTokenId)
+    return
+  }
+
+  // Create or update property map
+  await tx.propertyMap.upsert({
+    where: {
+      tokenId_propertyVersion: {
+        tokenId: baseToken.id,
+        propertyVersion: BigInt(newTokenId.property_version)
+      }
+    },
+    create: {
+      tokenId: baseToken.id,
+      propertyVersion: BigInt(newTokenId.property_version),
+      keys: event.data.keys,
+      values: event.data.values,
+      types: event.data.types
+    },
+    update: {
+      keys: event.data.keys,
+      values: event.data.values,
+      types: event.data.types
+    }
+  })
+
+  logger.info(`Processed MutateTokenPropertyMapEvent`)
 } 
