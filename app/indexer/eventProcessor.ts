@@ -29,104 +29,342 @@ async function getOrCreateAccount(address: string, tx: TransactionClient) {
 export async function processEvents(events: any[], tx: TransactionClient) {
   logger.debug(`Processing ${events.length} events`)
   
-  for (const event of events) {
-    try {
-      logger.debug(`Processing event of type ${event.type}`)
-      
-      // Create event tracking record
-      await tx.eventTracking.create({
-        data: {
-          eventType: event.type,
-          blockHeight: BigInt(event.blockHeight || 0),
-          transactionHash: event.transactionHash || '',
-          processed: false,
-          error: null
+  // Batch create event tracking records
+  await tx.eventTracking.createMany({
+    data: events.map(event => ({
+      eventType: event.type,
+      blockHeight: BigInt(event.blockHeight || 0),
+      transactionHash: event.transactionHash || '',
+      processed: false,
+      error: null
+    }))
+  })
+
+  // Group similar events together
+  const depositEvents = events.filter(e => e.type === `${TOKEN_MODULE_PATH}::DepositEvent`)
+  const withdrawEvents = events.filter(e => e.type === `${TOKEN_MODULE_PATH}::WithdrawEvent`)
+  const otherEvents = events.filter(e => 
+    e.type !== `${TOKEN_MODULE_PATH}::DepositEvent` && 
+    e.type !== `${TOKEN_MODULE_PATH}::WithdrawEvent`
+  )
+
+  try {
+    // Process batches of similar events
+    if (depositEvents.length > 0) {
+      await processBatchTokenDeposits(depositEvents, tx)
+    }
+    
+    if (withdrawEvents.length > 0) {
+      await processBatchTokenWithdraws(withdrawEvents, tx)
+    }
+
+    // Process other events sequentially
+    for (const event of otherEvents) {
+      await processEvent(event, tx)
+    }
+
+    // Batch update event tracking
+    await tx.eventTracking.updateMany({
+      where: {
+        blockHeight: {
+          in: events.map(e => BigInt(e.blockHeight || 0))
+        },
+        processed: false
+      },
+      data: {
+        processed: true
+      }
+    })
+
+  } catch (error) {
+    logger.error(`Failed to process events:`, error)
+    throw error
+  }
+}
+
+async function processBatchTokenDeposits(events: any[], tx: TransactionClient) {
+  // Collect unique addresses and tokens needed
+  const addresses = new Set(events.map(e => e.guid.account_address))
+  const tokenQueries = new Set(events.map(e => JSON.stringify({
+    name: e.data.id.token_data_id.name,
+    creator: e.data.id.token_data_id.creator,
+    collection: e.data.id.token_data_id.collection
+  })))
+
+  // Batch fetch all needed accounts and tokens
+  const [accounts, tokens] = await Promise.all([
+    tx.account.findMany({
+      where: {
+        address: {
+          in: Array.from(addresses)
+        }
+      }
+    }),
+    tx.token.findMany({
+      where: {
+        OR: Array.from(tokenQueries).map(q => {
+          const parsed = JSON.parse(q)
+          return {
+            tokenName: parsed.name,
+            tokenCollection: {
+              creator: parsed.creator,
+              name: parsed.collection
+            },
+            propertyVersion: BigInt(0)
+          }
+        })
+      },
+      include: {
+        tokenCollection: true
+      }
+    })
+  ])
+
+  // Create missing accounts in batch
+  const existingAddresses = new Set(accounts.map(a => a.address))
+  const missingAddresses = Array.from(addresses).filter(addr => !existingAddresses.has(addr))
+  
+  if (missingAddresses.length > 0) {
+    await tx.account.createMany({
+      data: missingAddresses.map(address => ({ address })),
+      skipDuplicates: true
+    })
+  }
+
+  // Prepare batch operations
+  const deposits = events.map(event => ({
+    tokenId: event.data.id,
+    amount: BigInt(event.data.amount),
+    toAddress: event.guid.account_address,
+  }))
+
+  const balanceUpdates = events.map(event => ({
+    accountAddress: event.guid.account_address,
+    tokenDataId: event.data.id.token_data_id,
+    propertyVersion: BigInt(event.data.id.property_version),
+    amount: BigInt(event.data.amount)
+  }))
+
+  // Execute batch operations
+  await Promise.all([
+    tx.tokenDeposit.createMany({
+      data: deposits
+    }),
+    ...balanceUpdates.map(update => 
+      tx.tokenBalance.upsert({
+        where: {
+          accountAddress_tokenDataId_propertyVersion: {
+            accountAddress: update.accountAddress,
+            tokenDataId: update.tokenDataId,
+            propertyVersion: update.propertyVersion
+          }
+        },
+        create: {
+          accountAddress: update.accountAddress,
+          tokenDataId: update.tokenDataId,
+          propertyVersion: update.propertyVersion,
+          balance: update.amount,
+          tokenId: tokens.find(t => 
+            t.tokenName === update.tokenDataId.name && 
+            t.tokenCollection.creator === update.tokenDataId.creator
+          )?.id
+        },
+        update: {
+          balance: {
+            increment: update.amount
+          }
         }
       })
+    ),
+    tx.tokenTransaction.createMany({
+      data: events.map(event => ({
+        accountAddress: event.guid.account_address,
+        tokenDataId: event.data.id.token_data_id,
+        transactionType: 'DEPOSIT',
+        amount: BigInt(event.data.amount),
+        toAddress: event.guid.account_address,
+      }))
+    })
+  ])
 
-      switch (event.type) {
-        case `${MODULE_PATH}::LootboxCreatedEvent`:
-          await processLootboxCreated(event, tx)
-          break
-        case `${MODULE_PATH}::LootboxPurchaseInitiatedEvent`:
-          await processLootboxPurchaseInitiated(event, tx)
-          break
-        case `${MODULE_PATH}::LootboxRewardDistributedEvent`:
-          await processLootboxRewardDistributed(event, tx)
-          break
-        case `${MODULE_PATH}::RaritiesSetEvent`:
-          await processRaritiesSet(event, tx)
-          break
-        case `${MODULE_PATH}::TokenAddedEvent`:
-          await processTokenAdded(event, tx)
-          break
-        case `${MODULE_PATH}::PriceUpdatedEvent`:
-          await processPriceUpdated(event, tx)
-          break
-        case `${MODULE_PATH}::VRFCallbackReceivedEvent`:
-          await processVRFCallback(event, tx)
-          break
-        case `${MODULE_PATH}::TokensClaimedEvent`:
-          await processTokensClaimed(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::TokenBurnEvent`:
-          await processTokenBurn(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::TokenMintEvent`:
-          await processTokenMint(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::MintTokenEvent`:
-          await processTokenMint(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::CreateTokenDataEvent`:
-          await processTokenData(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::CreateCollectionEvent`:
-          await processTokenCollection(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::DepositEvent`:
-          await processTokenDeposit(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::WithdrawEvent`:
-          await processTokenWithdraw(event, tx)
-          break
-        case `${MODULE_PATH}::LootboxStatusUpdatedEvent`:
-          await processLootboxStatusUpdated(event, tx)
-          break
-        case `${TOKEN_MODULE_PATH}::MutateTokenPropertyMapEvent`:
-          await processTokenPropertyMutation(event, tx)
-          break
-        default:
-          logger.warn(`Unknown event type: ${event.type}`)
+  logger.info(`Processed ${events.length} TokenDepositEvents in batch`)
+}
+
+async function processBatchTokenWithdraws(events: any[], tx: TransactionClient) {
+  // Collect unique addresses and tokens needed
+  const addresses = new Set(events.map(e => e.guid.account_address))
+  const tokenQueries = new Set(events.map(e => JSON.stringify({
+    name: e.data.id.name,
+    creator: e.data.id.token_data_id.creator
+  })))
+
+  // Batch fetch all needed accounts and tokens
+  const [accounts, tokens] = await Promise.all([
+    tx.account.findMany({
+      where: {
+        address: {
+          in: Array.from(addresses)
+        }
       }
+    }),
+    tx.token.findMany({
+      where: {
+        OR: Array.from(tokenQueries).map(q => {
+          const parsed = JSON.parse(q)
+          return {
+            tokenName: parsed.name,
+            tokenCollection: {
+              creator: parsed.creator,
+              name: parsed.collection
+            },
+            propertyVersion: BigInt(0)
+          }
+        })
+      },
+      include: {
+        tokenCollection: true
+      }
+    })
+  ])
 
-      // Update event as processed
-      await tx.eventTracking.updateMany({
+  // Create missing accounts in batch
+  const existingAddresses = new Set(accounts.map(a => a.address))
+  const missingAddresses = Array.from(addresses).filter(addr => !existingAddresses.has(addr))
+  
+  if (missingAddresses.length > 0) {
+    await tx.account.createMany({
+      data: missingAddresses.map(address => ({ address })),
+      skipDuplicates: true
+    })
+  }
+
+  // Prepare batch operations
+  const withdraws = events.map(event => ({
+    tokenId: event.data.id,
+    amount: BigInt(event.data.amount),
+    fromAddress: event.guid.account_address,
+  }))
+
+  const balanceUpdates = events.map(event => ({
+    accountAddress: event.guid.account_address,
+    tokenDataId: event.data.id.token_data_id,
+    propertyVersion: BigInt(event.data.id.property_version),
+    amount: BigInt(event.data.amount)
+  }))
+
+  // Execute batch operations
+  await Promise.all([
+    tx.tokenWithdraw.createMany({
+      data: withdraws
+    }),
+    ...balanceUpdates.map(update => 
+      tx.tokenBalance.update({
         where: {
-          eventType: event.type,
-          blockHeight: BigInt(event.blockHeight || 0),
-          processed: false
+          accountAddress_tokenDataId_propertyVersion: {
+            accountAddress: update.accountAddress,
+            tokenDataId: update.tokenDataId,
+            propertyVersion: update.propertyVersion
+          }
         },
         data: {
-          processed: true
+          tokenId: tokens.find(t => 
+            t.tokenName === update.tokenDataId.name && 
+            t.tokenCollection.creator === update.tokenDataId.creator
+          )?.id,
+          balance: {
+            decrement: update.amount
+          }
         }
       })
+    ),
+    tx.tokenTransaction.createMany({
+      data: events.map(event => ({
+        accountAddress: event.guid.account_address,
+        tokenDataId: event.data.id.token_data_id,
+        transactionType: 'WITHDRAW',
+        amount: BigInt(event.data.amount),
+        fromAddress: event.guid.account_address,
+      }))
+    })
+  ])
 
-    } catch (error) {
-      // Log the error in event tracking
-      await tx.eventTracking.create({
-        data: {
-          eventType: 'ERROR',
-          blockHeight: BigInt(event.blockHeight || 0),
-          transactionHash: event.transactionHash || '',
-          processed: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
-      });
-      
-      logger.error(`Failed to process event:`, error);
-      throw error;
+  logger.info(`Processed ${events.length} TokenWithdrawEvents in batch`)
+}
+
+async function processEvent(event: any, tx: TransactionClient) {
+  try {
+    logger.debug(`Processing event of type ${event.type}`)
+
+    switch (event.type) {
+      case `${MODULE_PATH}::LootboxCreatedEvent`:
+        await processLootboxCreated(event, tx)
+        break
+      case `${MODULE_PATH}::LootboxPurchaseInitiatedEvent`:
+        await processLootboxPurchaseInitiated(event, tx)
+        break
+      case `${MODULE_PATH}::LootboxRewardDistributedEvent`:
+        await processLootboxRewardDistributed(event, tx)
+        break
+      case `${MODULE_PATH}::RaritiesSetEvent`:
+        await processRaritiesSet(event, tx)
+        break
+      case `${MODULE_PATH}::TokenAddedEvent`:
+        await processTokenAdded(event, tx)
+        break
+      case `${MODULE_PATH}::PriceUpdatedEvent`:
+        await processPriceUpdated(event, tx)
+        break
+      case `${MODULE_PATH}::VRFCallbackReceivedEvent`:
+        await processVRFCallback(event, tx)
+        break
+      case `${MODULE_PATH}::TokensClaimedEvent`:
+        await processTokensClaimed(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::TokenBurnEvent`:
+        await processTokenBurn(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::TokenMintEvent`:
+        await processTokenMint(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::MintTokenEvent`:
+        await processTokenMint(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::CreateTokenDataEvent`:
+        await processTokenData(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::CreateCollectionEvent`:
+        await processTokenCollection(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::DepositEvent`:
+        await processTokenDepositOptimized(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::WithdrawEvent`:
+        await processTokenWithdrawOptimized(event, tx)
+        break
+      case `${MODULE_PATH}::LootboxStatusUpdatedEvent`:
+        await processLootboxStatusUpdated(event, tx)
+        break
+      case `${TOKEN_MODULE_PATH}::MutateTokenPropertyMapEvent`:
+        await processTokenPropertyMutation(event, tx)
+        break
+      default:
+        logger.warn(`Unknown event type: ${event.type}`)
     }
+
+  } catch (error) {
+    // Single error tracking create
+    await tx.eventTracking.create({
+      data: {
+        eventType: 'ERROR',
+        blockHeight: BigInt(event.blockHeight || 0),
+        transactionHash: event.transactionHash || '',
+        processed: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    })
+    
+    logger.error(`Failed to process event:`, error)
+    throw error
   }
 }
 
@@ -636,76 +874,77 @@ async function processTokenCollection(event: any, tx: TransactionClient) {
   logger.info(`Processed TokenCollectionEvent`)
 }
 
-async function processTokenDeposit(event: any, tx: TransactionClient) {
-  logger.debug('Processing token deposit', event)
-  
+async function processTokenDepositOptimized(event: any, tx: TransactionClient) {
   const tokenId = event.data.id
-  const toAddress = event.guid.account_address // This is the destination address
+  const toAddress = event.guid.account_address
   const amount = BigInt(event.data.amount)
   const propertyVersion = BigInt(tokenId.property_version)
 
-  // Ensure receiving account exists
-  await getOrCreateAccount(toAddress, tx)
+  // Run independent operations in parallel
+  const [account, token] = await Promise.all([
+    getOrCreateAccount(toAddress, tx),
+    tx.token.findFirst({
+      where: {
+        tokenName: tokenId.token_data_id.name,
+        tokenCollection: {
+          creator: tokenId.token_data_id.creator,
+          name: tokenId.token_data_id.collection
+        },
+        propertyVersion: BigInt(0)
+      }
+    })
+  ])
 
-  // Find associated token
-  const token = await tx.token.findFirst({
-    where: {
-      tokenName: tokenId.token_data_id.name,
-      tokenCollection: {
-        creator: tokenId.token_data_id.creator,
-        name: tokenId.token_data_id.collection
+  if (!token) {
+    throw new Error(`Base token not found for deposit: ${JSON.stringify(tokenId.token_data_id)}`)
+  }
+
+  // Run deposit record and balance update in parallel
+  await Promise.all([
+    tx.tokenDeposit.create({
+      data: {
+        tokenId: event.data.id,
+        amount: amount,
+        toAddress: toAddress,
+      }
+    }),
+    tx.tokenBalance.upsert({
+      where: {
+        accountAddress_tokenDataId_propertyVersion: {
+          accountAddress: toAddress,
+          tokenDataId: tokenId.token_data_id,
+          propertyVersion: propertyVersion
+        }
       },
-      propertyVersion: BigInt(0) // Always query for base token
-    }
-  })
-
-  // Create deposit record
-  await tx.tokenDeposit.create({
-    data: {
-      tokenId: event.data.id,
-      amount: BigInt(event.data.amount),
-      toAddress: toAddress,
-    }
-  })
-
-  // Update token balance for the receiving address
-  await tx.tokenBalance.upsert({
-    where: {
-      accountAddress_tokenDataId_propertyVersion: {
+      create: {
         accountAddress: toAddress,
         tokenDataId: tokenId.token_data_id,
-        propertyVersion: BigInt(tokenId.property_version)
+        tokenId: token.id,
+        propertyVersion: propertyVersion,
+        balance: amount
+      },
+      update: {
+        tokenId: token.id,
+        balance: {
+          increment: amount
+        }
       }
-    },
-    create: {
-      accountAddress: toAddress,
-      tokenDataId: tokenId.token_data_id,
-      tokenId: token?.id,
-      propertyVersion: BigInt(tokenId.property_version),
-      balance: amount
-    },
-    update: {
-      balance: {
-        increment: amount
+    }),
+    tx.tokenTransaction.create({
+      data: {
+        accountAddress: toAddress,
+        tokenDataId: tokenId.token_data_id,
+        transactionType: 'DEPOSIT',
+        amount,
+        toAddress: toAddress,
       }
-    }
-  })
-
-  // Record transaction with more details
-  await tx.tokenTransaction.create({
-    data: {
-      accountAddress: toAddress, // Using the destination address
-      tokenDataId: tokenId.token_data_id,
-      transactionType: 'DEPOSIT',
-      amount,
-      toAddress: toAddress,
-    }
-  })
+    })
+  ])
 
   logger.info(`Processed TokenDepositEvent`)
 }
 
-async function processTokenWithdraw(event: any, tx: TransactionClient) {
+async function processTokenWithdrawOptimized(event: any, tx: TransactionClient) {
   logger.debug('Processing token withdraw', event)
   
   const tokenId = event.data.id
@@ -713,37 +952,60 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
   const amount = BigInt(event.data.amount)
   const propertyVersion = BigInt(tokenId.property_version)
 
-  // Ensure withdrawing account exists
-  await getOrCreateAccount(fromAddress, tx)
+  // Run independent operations in parallel
+  const [account, token] = await Promise.all([
+    getOrCreateAccount(fromAddress, tx),
+    tx.token.findFirst({
+      where: {
+        tokenName: tokenId.name,
+        tokenCollection: {
+          creator: tokenId.token_data_id.creator
+        },
+        propertyVersion: BigInt(0)
+      }
+    })
+  ])
 
-  const token = await tx.token.findFirst({
+  // Check if balance record exists before proceeding
+  const balanceRecord = await tx.tokenBalance.findUnique({
     where: {
-      tokenName: tokenId.name,
-      tokenCollection: {
-        creator: tokenId.token_data_id.creator
-      },
-      propertyVersion: BigInt(0)
+      accountAddress_tokenDataId_propertyVersion: {
+        accountAddress: fromAddress,
+        tokenDataId: tokenId.token_data_id,
+        propertyVersion: propertyVersion
+      }
     }
-  })
+  });
 
-  await tx.tokenWithdraw.create({
-    data: {
-      tokenId: event.data.id,
-      amount: BigInt(event.data.amount),
-      fromAddress: fromAddress,
-    }
-  })
+  if (!balanceRecord) {
+    await tx.eventTracking.create({
+      data: {
+        eventType: 'ERROR',
+        blockHeight: BigInt(event.blockHeight || 0),
+        transactionHash: event.transactionHash || '',
+        processed: false,
+        error: `Missing token balance record for withdrawal: account ${fromAddress}, token ${JSON.stringify(tokenId.token_data_id)} ${JSON.stringify(tokenId.property_version)} ${JSON.stringify(fromAddress)} ${JSON.stringify(amount.toString())}`,
+      }
+    });
+    logger.error('Base token not found for withdrawal');
+    return;
+  }
 
-  console.log("Tokenbalance update" , tokenId.token_data_id, tokenId.property_version, fromAddress, amount)
-
-  // Update token balance for the withdrawing address
-  try{
-    const balanceResult = await tx.tokenBalance.update({
+  // Run withdraw record and balance update in parallel
+  await Promise.all([
+    tx.tokenWithdraw.create({
+      data: {
+        tokenId: event.data.id,
+        amount: BigInt(event.data.amount),
+        fromAddress: fromAddress,
+      }
+    }),
+    tx.tokenBalance.update({
       where: {
         accountAddress_tokenDataId_propertyVersion: {
           accountAddress: fromAddress,
           tokenDataId: tokenId.token_data_id,
-          propertyVersion: BigInt(tokenId.property_version)
+          propertyVersion: propertyVersion
         }
       },
       data: {
@@ -752,32 +1014,17 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
           decrement: amount
         }
       }
-    })
-  } catch (error) {
-    await tx.eventTracking.create({
+    }),
+    tx.tokenTransaction.create({
       data: {
-        eventType: 'ERROR',
-        blockHeight: BigInt(event.blockHeight || 0),
-        transactionHash: event.transactionHash || '',
-        processed: false,
-        error: `Base token not found for withdrawal: ${JSON.stringify(tokenId.token_data_id)} ${JSON.stringify(tokenId.property_version)} ${JSON.stringify(fromAddress)} ${JSON.stringify(amount.toString())}`,
+        accountAddress: fromAddress,
+        tokenDataId: tokenId.token_data_id,
+        transactionType: 'WITHDRAW',
+        amount,
+        fromAddress: fromAddress,
       }
-    });
-    logger.error('Base token not found for withdrawal');
-  }
-
-
-
-  // Record transaction with more details
-  await tx.tokenTransaction.create({
-    data: {
-      accountAddress: fromAddress,
-      tokenDataId: tokenId.token_data_id,
-      transactionType: 'WITHDRAW',
-      amount,
-      fromAddress: fromAddress,
-    }
-  })
+    })
+  ])
 
   logger.info(`Processed TokenWithdrawEvent`)
 }
