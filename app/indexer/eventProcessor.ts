@@ -483,6 +483,17 @@ async function processTokenBurn(event: any, tx: TransactionClient) {
     }
   })
 
+  const token = await tx.token.findFirst({
+    where: {
+      tokenName: tokenId.token_data_id.name,
+      tokenCollection: {
+        creator: tokenId.token_data_id.creator,
+        name: tokenId.token_data_id.collection
+      },
+      propertyVersion: BigInt(0) // Always query for base token
+    }
+  })
+
   await tx.token.updateMany({
     where: {
       tokenName: tokenId.name,
@@ -490,7 +501,7 @@ async function processTokenBurn(event: any, tx: TransactionClient) {
         creator: tokenId.creator,
         name: tokenId.collection
       },
-      propertyVersion: propertyVersion
+      propertyVersion: 0
     },
     data: {
       tokensBurned: {
@@ -657,7 +668,7 @@ async function processTokenDeposit(event: any, tx: TransactionClient) {
         creator: tokenId.token_data_id.creator,
         name: tokenId.token_data_id.collection
       },
-      propertyVersion: propertyVersion
+      propertyVersion: BigInt(0) // Always query for base token
     }
   })
 
@@ -724,7 +735,7 @@ async function processTokenWithdraw(event: any, tx: TransactionClient) {
       tokenCollection: {
         creator: tokenId.token_data_id.creator
       },
-      propertyVersion: propertyVersion
+      propertyVersion: BigInt(0)
     }
   })
 
