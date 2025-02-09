@@ -27,14 +27,14 @@ async function getOrCreateAccount(address: string, tx: TransactionClient) {
   return account
 }
 
-export async function processEvents(events: any[], tx: TransactionClient) {
+export async function processEvents(events: any[], tx: TransactionClient, blockHeight: number = 0) {
   logger.debug(`Processing ${events.length} events`)
   
   // Batch create event tracking records
   await tx.eventTracking.createMany({
     data: events.map(event => ({
       eventType: event.type,
-      blockHeight: BigInt(event.blockHeight || 0),
+      blockHeight: blockHeight,
       transactionHash: event.transactionHash || '',
       processed: false,
       error: null
@@ -68,7 +68,7 @@ export async function processEvents(events: any[], tx: TransactionClient) {
     await tx.eventTracking.updateMany({
       where: {
         blockHeight: {
-          in: events.map(e => BigInt(e.blockHeight || 0))
+          in: events.map(e => blockHeight)
         },
         processed: false
       },
@@ -79,7 +79,6 @@ export async function processEvents(events: any[], tx: TransactionClient) {
 
   } catch (error) {
     logger.error(`Failed to process events:`, error)
-    throw error
   }
 }
 
@@ -665,7 +664,7 @@ async function processPriceUpdated(event: any, tx: TransactionClient) {
   logger.debug('Processing price update', event)
   const lootbox = await tx.lootbox.findFirst({
     where: {
-      collectionResourceAddress: event.data.creator,
+      creatorAddress: event.data.creator,
       collectionName: event.data.collection_name
     }
   })

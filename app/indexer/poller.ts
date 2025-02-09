@@ -86,7 +86,7 @@ export class EventPoller {
           
           for (let i = 0; i < events.length; i += chunkSize) {
             const eventChunk = events.slice(i, i + chunkSize)
-            processPromises.push(processEvents(eventChunk, tx))
+            processPromises.push(processEvents(eventChunk, tx, this.currentBlockHeight))
           }
 
           // Wait for all chunks to complete
