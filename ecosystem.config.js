@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'indexer',
+      name: 'testnet-indexer',
       script: 'npm',
       args: 'run dev:indexer',
       env: {

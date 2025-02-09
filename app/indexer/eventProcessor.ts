@@ -6,6 +6,7 @@ import cron from 'node-cron'
 const logger = createLogger('eventProcessor')
 const MODULE_PATH = `${process.env.NEXT_PUBLIC_CRYSTARA_ADR}::${process.env.NEXT_PUBLIC_COLLECTIONS_MODULE_NAME}`
 const TOKEN_MODULE_PATH = `${process.env.NEXT_PUBLIC_TOKENS_MODULE_ADDRESS}::${process.env.NEXT_PUBLIC_TOKENS_MODULE_NAME}`
+const TOKENS_EVENT_STORE_MODULE_PATH = `${process.env.NEXT_PUBLIC_TOKENS_MODULE_ADDRESS}::${process.env.NEXT_PUBLIC_TOKENS_EVENT_STORE_MODULE_NAME}`
 
 type TransactionClient = Omit<
   typeof prismadb,
@@ -347,6 +348,33 @@ async function processEvent(event: any, tx: TransactionClient) {
       case `${TOKEN_MODULE_PATH}::MutateTokenPropertyMapEvent`:
         await processTokenPropertyMutation(event, tx)
         break
+
+      //FIX
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::CollectionDescriptionMutateEvent`:
+        await processCollectionDescriptionMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::CollectionUriMutateEvent`:
+        await processCollectionUriMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::CollectionMaximumMutateEvent`:
+        await processCollectionMaximumMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::UriMutateEvent`:
+        await processTokenUriMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::DefaultPropertyMutateEvent`:
+        await processTokenDefaultPropertyMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::DescriptionMutateEvent`:
+        await processTokenDescriptionMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::RoyaltyMutateEvent`:
+        await processTokenRoyaltyMutate(event, tx)
+        break
+      case `${TOKENS_EVENT_STORE_MODULE_PATH}::MaximumMutateEvent`:
+        await processTokenMaximumMutate(event, tx)
+        break
+        //FIX
       default:
         logger.warn(`Unknown event type: ${event.type}`)
     }
@@ -1224,3 +1252,186 @@ export async function cleanupOldEventTracking(tx: TransactionClient, retentionDa
 //    await cleanupOldEventTracking(tx);
 //  });
 //}); 
+
+async function processCollectionDescriptionMutate(event: any, tx: TransactionClient) {
+  await tx.tokenCollection.update({
+    where: {
+      creator_name: {
+        creator: event.data.creator_addr,
+        name: event.data.collection_name
+      }
+    },
+    data: {
+      description: event.data.new_description
+    }
+  })
+  logger.info('Processed CollectionDescriptionMutateEvent')
+}
+
+async function processCollectionUriMutate(event: any, tx: TransactionClient) {
+  await tx.tokenCollection.update({
+    where: {
+      creator_name: {
+        creator: event.data.creator_addr,
+        name: event.data.collection_name
+      }
+    },
+    data: {
+      uri: event.data.new_uri
+    }
+  })
+  logger.info('Processed CollectionUriMutateEvent')
+}
+
+async function processCollectionMaximumMutate(event: any, tx: TransactionClient) {
+  await tx.tokenCollection.update({
+    where: {
+      creator_name: {
+        creator: event.data.creator_addr,
+        name: event.data.collection_name
+      }
+    },
+    data: {
+      maximum: BigInt(event.data.new_maximum)
+    }
+  })
+  logger.info('Processed CollectionMaximumMutateEvent')
+}
+
+async function processTokenUriMutate(event: any, tx: TransactionClient) {
+  const existingCollection = await tx.tokenCollection.findFirst({
+    where: {
+      creator: event.data.creator,
+      name: event.data.collection
+    }
+  });
+  if(!existingCollection) {
+    logger.error('Collection not found for UriMutationEvent', event.data)
+    return
+  }
+  logger.debug('Processing UriMutationEvent', event.data)
+  logger.debug('Collection', existingCollection)
+  logger.debug('Token', event.data.token)
+  logger.debug('PropertyVersion', BigInt(0))
+  logger.debug('New Uri', event.data.new_uri)
+  await tx.token.update({
+    where: {
+      tokenCollectionId_tokenName_propertyVersion: {
+        tokenCollectionId: existingCollection.id,
+        tokenName: event.data.token,
+        propertyVersion: BigInt(0)
+      }
+    },
+    data: {
+      tokenUri: event.data.new_uri
+    }
+  })
+  logger.info('Processed UriMutationEvent')
+}
+
+async function processTokenDefaultPropertyMutate(event: any, tx: TransactionClient) {
+  const existingCollection = await tx.tokenCollection.findFirst({
+    where: {
+      creator: event.data.creator,
+      name: event.data.collection
+    }
+  });
+  if(!existingCollection) {
+    logger.error('Collection not found for DefaultPropertyMutationEvent', event.data)
+    return
+  }
+  await tx.token.update({
+    where: {
+      tokenCollectionId_tokenName_propertyVersion: {
+        tokenCollectionId: existingCollection.id,
+        tokenName: event.data.token,
+        propertyVersion: BigInt(0)
+      }
+    },
+    data: {
+      propertyKeys: event.data.keys,
+      propertyValues: event.data.new_values
+    }
+  })
+  logger.info('Processed DefaultPropertyMutateEvent')
+}
+
+async function processTokenDescriptionMutate(event: any, tx: TransactionClient) {
+  const existingCollection = await tx.tokenCollection.findFirst({
+    where: {
+      creator: event.data.creator,
+      name: event.data.collection
+    }
+  });
+  if(!existingCollection) {
+    logger.error('Collection not found for DescriptionMutationEvent', event.data)
+    return
+  }
+  await tx.token.update({
+    where: {
+      tokenCollectionId_tokenName_propertyVersion: {
+        tokenCollectionId: existingCollection.id,
+        tokenName: event.data.token,
+        propertyVersion: BigInt(0)
+      }
+    },
+    data: {
+      description: event.data.new_description
+    }
+  })
+  logger.info('Processed DescriptionMutateEvent')
+}
+
+async function processTokenRoyaltyMutate(event: any, tx: TransactionClient) {
+  const existingCollection = await tx.tokenCollection.findFirst({
+    where: {
+      creator: event.data.creator,
+      name: event.data.collection
+    }
+  });
+  if(!existingCollection) {
+    logger.error('Collection not found for RoyaltyMutationEvent', event.data)
+    return
+  }
+  await tx.token.update({
+    where: {
+      tokenCollectionId_tokenName_propertyVersion: {
+        tokenCollectionId: existingCollection.id,
+        tokenName: event.data.token,
+        propertyVersion: BigInt(0)
+      }
+    },
+    data: {
+      royaltyPointsNumerator: BigInt(event.data.new_royalty_numerator),
+      royaltyPointsDenominator: BigInt(event.data.new_royalty_denominator),
+      royaltyPayeeAddress: event.data.new_royalty_payee_addr
+    }
+  })
+  logger.info('Processed RoyaltyMutateEvent')
+}
+
+async function processTokenMaximumMutate(event: any, tx: TransactionClient) {
+  const existingCollection = await tx.tokenCollection.findFirst({
+    where: {
+      creator: event.data.creator,
+      name: event.data.collection
+    }
+  });
+  if(!existingCollection) {
+    logger.error('Collection not found for MaximumMutationEvent', event.data)
+    return
+  }
+  await tx.token.update({
+    where: {
+      tokenCollectionId_tokenName_propertyVersion: {
+        tokenCollectionId: existingCollection.id,
+        tokenName: event.data.token,
+        propertyVersion: BigInt(0)
+      }
+    },
+    data: {
+      maxSupply: BigInt(event.data.new_maximum)
+    }
+  })
+  logger.info('Processed MaximumMutateEvent')
+} 
