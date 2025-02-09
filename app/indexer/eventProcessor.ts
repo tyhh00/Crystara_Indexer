@@ -502,6 +502,16 @@ async function processLootboxPurchaseInitiated(event: any, tx: TransactionClient
     }
   })
 
+  // Update lootbox stock
+  tx.lootbox.update({
+    where: { id: lootbox.id },
+    data: {
+      availableStock: {
+        decrement: BigInt(event.data.quantity)
+      }
+    }
+  }),
+
   // Update lootbox analytics
   await tx.lootboxAnalytics.upsert({
     where: { lootboxId: lootbox.id },
