@@ -1161,8 +1161,8 @@ export async function cleanupOldEventTracking(tx: TransactionClient, retentionDa
 }
 
 // Run daily at midnight
-cron.schedule('0 0 * * *', async () => {
-  const tx = await prismadb.$transaction(async (tx) => {
-    await cleanupOldEventTracking(tx);
-  });
-}); 
+//cron.schedule('0 0 * * *', async () => {
+//  const tx = await prismadb.$transaction(async (tx) => {
+//    await cleanupOldEventTracking(tx);
+//  });
+//}); 
