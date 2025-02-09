@@ -59,6 +59,7 @@ model Token {
   rarity            Rarity?         @relation(fields: [rarityId], references: [id])
   tokenCollection   TokenCollection @relation(fields: [tokenCollectionId], references: [id])
   balances          TokenBalance[]
+  mutabilityConfig  Json?
 
   description              String?
   royaltyPayeeAddress      String?

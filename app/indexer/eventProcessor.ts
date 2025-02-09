@@ -888,6 +888,7 @@ async function processTokenData(event: any, tx: TransactionClient) {
       propertyKeys: event.data.property_keys,
       propertyValues: event.data.property_values,
       propertyTypes: event.data.property_types,
+      mutabilityConfig: event.data.mutability_config,
       tokenCollectionId: tokenCollection.id,
       propertyVersion: BigInt(0)
     }

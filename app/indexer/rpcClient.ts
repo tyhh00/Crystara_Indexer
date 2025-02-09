@@ -8,6 +8,7 @@ const CRYSTARA_ADDRESS = process.env.NEXT_PUBLIC_CRYSTARA_ADR!
 const COLLECTIONS_MODULE = process.env.NEXT_PUBLIC_COLLECTIONS_MODULE_NAME!
 const TOKENS_MODULE_ADDRESS = process.env.NEXT_PUBLIC_TOKENS_MODULE_ADDRESS!
 const TOKENS_MODULE = process.env.NEXT_PUBLIC_TOKENS_MODULE_NAME!
+const TOKENS_EVENT_STORE_MODULE = process.env.NEXT_PUBLIC_TOKENS_EVENT_STORE_MODULE_NAME!
 
 const MAX_RETRIES = 3
 const MAX_BLOCK_RANGE = 10
@@ -21,6 +22,8 @@ interface EventResponse {
     timestamp: number
   }>
 }
+
+let lastFetchedFinishTime = 0;
 
 export async function fetchLatestBlockHeight(): Promise<number> {
   try {
@@ -68,7 +71,18 @@ export async function fetchBlockEvents(
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::DepositEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::WithdrawEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::BurnTokenEvent`,
-        ], startBlock, endBlock),
+        ], startBlock, endBlock, 0),
+
+        ...await fetchEventsByTypes([
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::CollectionDescriptionMutateEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::CollectionUriMutateEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::CollectionMaxiumMutateEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::UriMutationEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::DefaultPropertyMutateEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::DescriptionMutateEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::RoyaltyMutateEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_EVENT_STORE_MODULE}::MaxiumMutateEvent`,
+        ], startBlock, endBlock, 0),
 
         // Crystara module events
         ...await fetchEventsByTypes([
@@ -81,7 +95,7 @@ export async function fetchBlockEvents(
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::PriceUpdatedEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::VRFCallbackReceivedEvent`,
           `${CRYSTARA_ADDRESS}::${COLLECTIONS_MODULE}::LootboxStatusUpdatedEvent`
-        ], startBlock, endBlock)
+        ], startBlock, endBlock, 0)
       ]
 
       events = moduleEvents
@@ -142,15 +156,31 @@ async function fetchTokenTransferEvents(startBlock: number, endBlock: number): P
 }
 
 const BATCH_SIZE = 10  // Adjust based on rate limits
-const RETRY_DELAY = 300
+const RETRY_DELAY = 50
 
 async function fetchEventsByTypes(
   eventTypes: string[], 
   startBlock: number, 
-  endBlock: number
+  endBlock: number,
+  delay: number = 0
 ): Promise<any[]> {
   const events: any[] = []
   
+  if(delay > 0) {
+    await sleep(delay)
+  }
+
+  let timeSinceLastFetch = Date.now() - lastFetchedFinishTime;
+
+  let minTimeBetweenFetchBatch = 295;
+  if(timeSinceLastFetch < minTimeBetweenFetchBatch) {
+    await sleep(minTimeBetweenFetchBatch-timeSinceLastFetch)
+  }
+  timeSinceLastFetch = Date.now() - lastFetchedFinishTime;
+
+  //console.log("Time since last fetch: ", timeSinceLastFetch);
+  lastFetchedFinishTime = Date.now();
+
   // Process event types in smaller batches
   for (let i = 0; i < eventTypes.length; i += BATCH_SIZE) {
     const batchTypes = eventTypes.slice(i, i + BATCH_SIZE)
@@ -158,13 +188,13 @@ async function fetchEventsByTypes(
     // Fetch batch with retry logic
     const batchPromises = batchTypes.map(async (eventType) => {
       let retries = 0
-      while (retries < 3) {
+      while (retries < 5) {
         try {
           const url = `${SUPRA_RPC_URL}/events/${eventType}?start=${startBlock}&end=${endBlock}`
           const response = await fetch(url)
 
           if (response.status === 429) {
-            logger.debug('Rate limit exceeded, sleeping for 2 seconds')
+            logger.debug(`Rate limit exceeded, sleeping for ${RETRY_DELAY}ms ${retries}`)
             retries++
             await sleep(RETRY_DELAY * Math.pow(2, retries))
             continue
