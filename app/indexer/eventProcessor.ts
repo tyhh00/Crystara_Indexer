@@ -1,6 +1,7 @@
 import prismadb from '@/lib/prismadb'
 import { createLogger } from './utils'
 import { deserializeVectorU8 } from './utils'
+import cron from 'node-cron'
 
 const logger = createLogger('eventProcessor')
 const MODULE_PATH = `${process.env.NEXT_PUBLIC_CRYSTARA_ADR}::${process.env.NEXT_PUBLIC_COLLECTIONS_MODULE_NAME}`
@@ -582,7 +583,7 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
 
-  for (let i = 0; i < MAX_RETRIES; i++) {
+
     const lootbox = await tx.lootbox.findFirst({
       where: {
         creatorAddress: event.data.creator,
@@ -592,42 +593,55 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
         rarities: true
       }
     })
-
-    if (!lootbox) {
-      throw new Error('Lootbox not found')
-    }
-
     let tokenCollectionId : number | undefined;
-    if(lootbox.tokenCollectionId === null) {
+    let rarity;
+    let id : number | undefined;
+
+    if (lootbox) {
+      if(lootbox.tokenCollectionId === null) {
+        const existingCollection = await tx.tokenCollection.findFirst({
+          where: {
+            creator: event.data.creator,
+            name: event.data.collection_name
+          }
+        });
+
+        if(existingCollection) {
+          logger.debug(`Found existing token collection: ${existingCollection.id}`)
+          linkTokenCollectionToLootbox(lootbox.collectionResourceAddress, lootbox.collectionName, existingCollection?.id, tx)
+          tokenCollectionId = existingCollection?.id;
+        }
+      }
+
+      if(tokenCollectionId === null && lootbox.tokenCollectionId === undefined) {
+        throw new Error('Token collection not found')
+      }
+
+      if(tokenCollectionId) {
+        id = tokenCollectionId;
+      }
+      if(lootbox.tokenCollectionId) {
+        id = lootbox.tokenCollectionId;
+      }
+      if(!id) {
+        throw new Error('Token collection not found')
+      }
+      rarity = lootbox.rarities.find(r => r.rarityName === event.data.rarity)
+    }
+    else {
       const existingCollection = await tx.tokenCollection.findFirst({
         where: {
           creator: event.data.creator,
           name: event.data.collection_name
         }
       });
-
-      if(existingCollection) {
-        logger.debug(`Found existing token collection: ${existingCollection.id}`)
-        linkTokenCollectionToLootbox(lootbox.collectionResourceAddress, lootbox.collectionName, existingCollection?.id, tx)
-        tokenCollectionId = existingCollection?.id;
-      }
+      id = existingCollection?.id;
     }
 
-    if(tokenCollectionId === null && lootbox.tokenCollectionId === undefined) {
-      throw new Error('Token collection not found')
-    }
-
-    let id : number | undefined;
-    if(tokenCollectionId) {
-      id = tokenCollectionId;
-    }
-    if(lootbox.tokenCollectionId) {
-      id = lootbox.tokenCollectionId;
-    }
     if(!id) {
-      throw new Error('Token collection not found')
+      throw new Error('Token collection not found');
     }
-    const rarity = lootbox.rarities.find(r => r.rarityName === event.data.rarity)
+
     const token = await tx.token.create({
       data: {
         tokenCollectionId: id,
@@ -642,7 +656,7 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
     })
     logger.info(`Processed TokenAddedEvent: ${token.id}`)
     return;
-  }
+  
 
   throw new Error('Rarity not found after retries')
 }
@@ -1121,4 +1135,34 @@ async function processTokenPropertyMutation(event: any, tx: TransactionClient) {
   })
 
   logger.info(`Processed MutateTokenPropertyMapEvent`)
-} 
+}
+
+export async function cleanupOldEventTracking(tx: TransactionClient, retentionDays: number = 30) {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+  try {
+    const result = await tx.eventTracking.deleteMany({
+      where: {
+        createdAt: {
+          lt: cutoffDate
+        },
+        // Optionally, only delete processed events
+        processed: true
+      }
+    });
+
+    logger.info(`Cleaned up ${result.count} old event tracking records`);
+    return result.count;
+  } catch (error) {
+    logger.error('Failed to cleanup old event tracking:', error);
+    throw error;
+  }
+}
+
+// Run daily at midnight
+cron.schedule('0 0 * * *', async () => {
+  const tx = await prismadb.$transaction(async (tx) => {
+    await cleanupOldEventTracking(tx);
+  });
+}); 
