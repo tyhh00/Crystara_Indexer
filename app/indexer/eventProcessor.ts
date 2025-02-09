@@ -588,6 +588,7 @@ async function processRaritiesSet(event: any, tx: TransactionClient) {
   logger.info(`Processed RaritiesSetEvent: ${rarities.length} rarities`)
 }
 
+//Lootbox Version of Token Adding.
 async function processTokenAdded(event: any, tx: TransactionClient) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
@@ -651,7 +652,20 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
       throw new Error('Token collection not found');
     }
 
-    const token = await tx.token.create({
+    const token = await tx.token.update({
+      where: {
+        tokenCollectionId_tokenName_propertyVersion: {
+          tokenCollectionId: id,
+          tokenName: event.data.token_name,
+          propertyVersion: BigInt(0),
+        }
+      },
+      data: {
+        rarityId: rarity?.id,
+      }
+    })
+
+    /*const token = await tx.token.create({
       data: {
         tokenCollectionId: id,
         tokenName: event.data.token_name,
@@ -662,7 +676,7 @@ async function processTokenAdded(event: any, tx: TransactionClient) {
         tokensBurned: BigInt(0),
         propertyVersion: BigInt(0),
       }
-    })
+    })*/
     logger.info(`Processed TokenAddedEvent: ${token.id}`)
     return;
   
@@ -847,50 +861,55 @@ async function processTokenMint(event: any, tx: TransactionClient) {
 async function processTokenData(event: any, tx: TransactionClient) {
   logger.debug('Processing token data', event)
 
-    // First find existing token
-    const token = await tx.token.findFirst({
-      where: {
-        tokenCollection: {
-          creator: event.data.id.creator,
-          name: event.data.id.collection
-        },
-        tokenName: event.data.id.name,
-        propertyVersion: BigInt(0)
-      }
-    })
-  
-    if (token) {
-      // Update token if found
-      await tx.token.update({
-        where: { id: token.id },
-        data: {
-          description: event.data.description,
-          royaltyPayeeAddress: event.data.royalty_payee_address,
-          royaltyPointsDenominator: BigInt(event.data.royalty_points_denominator),
-          royaltyPointsNumerator: BigInt(event.data.royalty_points_numerator),
-          propertyKeys: event.data.property_keys,
-          propertyValues: event.data.property_values,
-          propertyTypes: event.data.property_types,
-        }
-      })
-    }
-
-  await tx.tokenData.create({
-    data: {
+      // Find or create token collection first
+  const tokenCollection = await tx.tokenCollection.findFirst({
+    where: {
       creator: event.data.id.creator,
-      collection: event.data.id.collection,
-      name: event.data.id.name,
+      name: event.data.id.collection
+    }
+  })
+
+  if (!tokenCollection) {
+    throw new Error('Token collection not found')
+  }
+
+  // Create base token with token data properties
+  await tx.token.create({
+    data: {
+      tokenName: event.data.id.name,
+      tokenUri: event.data.uri,
+      maxSupply: BigInt(event.data.maximum),
+      circulatingSupply: BigInt(0),
+      tokensBurned: BigInt(0),
       description: event.data.description,
-      maximum: BigInt(event.data.maximum),
-      uri: event.data.uri,
       royaltyPayeeAddress: event.data.royalty_payee_address,
       royaltyPointsDenominator: BigInt(event.data.royalty_points_denominator),
       royaltyPointsNumerator: BigInt(event.data.royalty_points_numerator),
-      propertyKeys: event.data.property_keys.map((key: string) => key),
+      propertyKeys: event.data.property_keys,
       propertyValues: event.data.property_values,
-      propertyTypes: event.data.property_types.map((type: string) => type),
+      propertyTypes: event.data.property_types,
+      tokenCollectionId: tokenCollection.id,
+      propertyVersion: BigInt(0)
     }
   })
+
+  //TODO: Deprecated way of storing token data. Now moved to Token model
+    /*await tx.tokenData.create({
+      data: {
+        creator: event.data.id.creator,
+        collection: event.data.id.collection,
+        name: event.data.id.name,
+        description: event.data.description,
+        maximum: BigInt(event.data.maximum),
+        uri: event.data.uri,
+        royaltyPayeeAddress: event.data.royalty_payee_address,
+        royaltyPointsDenominator: BigInt(event.data.royalty_points_denominator),
+        royaltyPointsNumerator: BigInt(event.data.royalty_points_numerator),
+        propertyKeys: event.data.property_keys.map((key: string) => key),
+        propertyValues: event.data.property_values,
+        propertyTypes: event.data.property_types.map((type: string) => type),
+      }
+    })*/
   logger.info(`Processed TokenDataEvent`)
 }
 

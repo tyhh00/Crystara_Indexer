@@ -61,9 +61,9 @@ export async function fetchBlockEvents(
 
                 // Token module events
         ...await fetchEventsByTypes([
-          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::MintTokenEvent`,
-          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::CreateTokenDataEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::CreateCollectionEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::CreateTokenDataEvent`,
+          `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::MintTokenEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::MutateTokenPropertyMapEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::DepositEvent`,
           `${TOKENS_MODULE_ADDRESS}::${TOKENS_MODULE}::WithdrawEvent`,
