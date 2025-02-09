@@ -846,6 +846,35 @@ async function processTokenMint(event: any, tx: TransactionClient) {
 
 async function processTokenData(event: any, tx: TransactionClient) {
   logger.debug('Processing token data', event)
+
+    // First find existing token
+    const token = await tx.token.findFirst({
+      where: {
+        tokenCollection: {
+          creator: event.data.id.creator,
+          name: event.data.id.collection
+        },
+        tokenName: event.data.id.name,
+        propertyVersion: BigInt(0)
+      }
+    })
+  
+    if (token) {
+      // Update token if found
+      await tx.token.update({
+        where: { id: token.id },
+        data: {
+          description: event.data.description,
+          royaltyPayeeAddress: event.data.royalty_payee_address,
+          royaltyPointsDenominator: BigInt(event.data.royalty_points_denominator),
+          royaltyPointsNumerator: BigInt(event.data.royalty_points_numerator),
+          propertyKeys: event.data.property_keys,
+          propertyValues: event.data.property_values,
+          propertyTypes: event.data.property_types,
+        }
+      })
+    }
+
   await tx.tokenData.create({
     data: {
       creator: event.data.id.creator,

@@ -60,6 +60,14 @@ model Token {
   tokenCollection   TokenCollection @relation(fields: [tokenCollectionId], references: [id])
   balances          TokenBalance[]
 
+  description              String?
+  royaltyPayeeAddress      String?
+  royaltyPointsDenominator BigInt?
+  royaltyPointsNumerator   BigInt?
+  propertyKeys             String[]     @default([])
+  propertyValues           Json?
+  propertyTypes            String[]     @default([])
+
   @@unique([tokenCollectionId, tokenName, propertyVersion])
   @@index([tokenCollectionId])
   @@index([rarityId])
